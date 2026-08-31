@@ -1,0 +1,63 @@
+appId: com.creatoros.desktop
+productName: CreatorOS Desktop
+copyright: Copyright © 2026 CreatorOS Studio
+
+directories:
+  output: release
+  buildResources: assets
+
+files:
+  - dist/**/*
+  - electron.cjs
+  - preload.cjs
+  - package.json
+  - assets/**/*
+  - "!node_modules/**/*"
+  - "!src/**/*"
+  - "!*.spec"
+  - "!*.py"
+
+extraResources:
+  - from: dist_py/creatoros_core.exe
+    to: bin/creatoros_core.exe
+    filter:
+      - "**/*"
+  - from: bin/
+    to: bin/
+    filter:
+      - "**/*"
+  - from: assets/
+    to: assets/
+    filter:
+      - "**/*"
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+  icon: assets/icon.ico
+  requestedExecutionLevel: asInvoker
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+  allowElevation: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: CreatorOS Desktop
+  uninstallDisplayName: CreatorOS Desktop Uninstaller
+  deleteAppDataOnUninstall: false
+
+portable:
+  artifactName: CreatorOS-Portable-${version}.exe
+
+asar: true
+asarUnpack:
+  - dist/server.cjs
+  - resources/**/*
+  - assets/**/*

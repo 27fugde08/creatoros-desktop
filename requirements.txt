@@ -1,0 +1,58 @@
+# ==============================================================================
+# CREATOR_OS AI AUTOMATION ENGINE - BACKEND REQUIREMENTS
+# Fullstack Python Backend (FastAPI, WebSocket, FFmpeg, Whisper, Gemini, ADB)
+# Compatible: Python 3.10 - 3.12 (Linux / Windows / macOS / CUDA 12.x)
+# ==============================================================================
+
+# --- 1. CORE SERVER & REAL-TIME WEBSOCKET API ---
+fastapi>=0.111.0,<1.0.0
+uvicorn[standard]>=0.30.0,<1.0.0
+websockets>=12.0,<14.0
+pydantic>=2.7.0,<3.0.0
+pydantic-settings>=2.3.0,<3.0.0
+python-multipart>=0.0.9
+python-dotenv>=1.0.1
+
+# --- 2. AI CORE & LLM INTEGRATION (GEMINI 2.5 PRO / FLASH) ---
+google-genai>=0.1.1
+google-generativeai>=0.7.0
+tiktoken>=0.7.0
+
+# --- 3. SPEECH-TO-TEXT & AUDIO TRANSCRIPTION (STT) ---
+faster-whisper>=1.0.2
+ctranslate2>=4.3.0
+soundfile>=0.12.1
+librosa>=0.10.2
+scipy>=1.13.0
+numpy>=1.26.0,<2.0.0
+
+# --- 4. TEXT-TO-SPEECH (TTS) & VOICE SYNTHESIS ---
+edge-tts>=6.1.12
+gTTS>=2.5.1
+pydub>=0.25.1
+
+# --- 5. VIDEO PROCESSING & FFMPEG RENDERING ENGINE ---
+ffmpeg-python>=0.2.0
+moviepy>=1.0.3,<2.0.0
+opencv-python-headless>=4.9.0.80
+Pillow>=10.3.0
+
+# --- 6. BATCH DOWNLOADER & SCRAPING ENGINE (TIKTOK / YOUTUBE / DOUYIN) ---
+yt-dlp>=2024.7.9
+requests>=2.32.3
+httpx>=0.27.0
+aiohttp>=3.9.5
+beautifulsoup4>=4.12.3
+lxml>=5.2.2
+
+# --- 7. PHONE FARM AUTOMATION (ANDROID ADB & APPIUM) ---
+adbutils>=2.7.2
+pure-python-adb>=0.3.0.dev0
+uiautomator2>=3.0.19
+
+# --- 8. SYSTEM TELEMETRY, GPU MONITORING & UTILITIES ---
+psutil>=5.9.8
+pynvml>=11.5.0
+colorama>=0.4.6
+tqdm>=4.66.4
+rich>=13.7.1

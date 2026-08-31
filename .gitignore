@@ -1,0 +1,30 @@
+node_modules/
+build/
+dist/
+dist_py/
+release/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+
+# Python cache & virtual environments
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Temporary storage & cache
+temp/
+downloads/
+output/
+database.sqlite
+creatoros_state.db
+*.db
+*.sqlite
+*.sqlite3
+

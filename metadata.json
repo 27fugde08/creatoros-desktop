@@ -1,0 +1,7 @@
+{
+  "name": "Creator Studio AI Suite",
+  "description": "Bộ siêu công cụ tự động hóa sáng tạo nội dung, AI Highlight, dịch thuật video, review đa ngôn ngữ, edit bán content, AI Comic đồng bộ nhân vật, SEO YouTube/FB, download hàng loạt và quản trị kênh đa nền tảng.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
