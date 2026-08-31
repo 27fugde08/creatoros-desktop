@@ -1293,34 +1293,33 @@ app.post("/api/download/scan", async (req, res) => {
 });
 
 app.post("/api/download/execute", async (req, res) => {
-  const { items, resolution = "1080p", remove_watermark = true } = req.body;
+  const { items, resolution = "1080p", remove_watermark = true, output_dir = "downloads" } = req.body;
   if (!items || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ success: false, error: "Invalid or empty items" });
   }
 
   // Response immediately so UI stays responsive
-  res.json({ success: true, message: "Multi-platform bulk download initiated" });
+  res.json({ success: true, message: "Multi-platform direct MP4 download initiated" });
 
   const { spawn } = require("child_process");
   const pythonCmd = process.platform === "win32" ? "python" : "python3";
-  const outDir = path.join(process.cwd(), "downloads");
-  if (!fs.existsSync(outDir)) {
-    fs.mkdirSync(outDir, { recursive: true });
+  const targetOutDir = output_dir ? path.resolve(output_dir) : path.join(process.cwd(), "downloads");
+  if (!fs.existsSync(targetOutDir)) {
+    fs.mkdirSync(targetOutDir, { recursive: true });
   }
 
   const args = [
     "bulk_downloader_engine.py",
     "--urls_json", JSON.stringify(items),
     "--resolution", resolution,
-    "--out_dir", "downloads",
-    "--zip_name", "CreatorOS_Batch_Export.zip"
+    "--out_dir", targetOutDir
   ];
   if (remove_watermark) {
     args.push("--no_watermark");
   }
 
   console.log(`[Express Downloader] Spawning: ${pythonCmd} ${args.join(" ")}`);
-  io.emit("downloader_log", `[system] Khởi chạy Bulk Downloader Engine (${items.length} video)...`);
+  io.emit("downloader_log", `[system] Khởi chạy Bulk Downloader Engine (${items.length} video) -> Lưu trực tiếp tại: ${targetOutDir}`);
 
   try {
     const pyProcess = spawn(pythonCmd, args, { cwd: process.cwd() });
@@ -1365,7 +1364,7 @@ app.post("/api/download/execute", async (req, res) => {
     pyProcess.on("close", (code: number) => {
       console.log(`Bulk Downloader exited with code: ${code}`);
       if (code === 0) {
-        io.emit("downloader_log", "[success] Đã tải hoàn tất toàn bộ video và đóng gói ZIP sẵn sàng!");
+        io.emit("downloader_log", `[success] ✅ Đã tải hoàn tất và lưu trực tiếp file .MP4 vào thư mục: ${targetOutDir}`);
         // Mark all items completed
         items.forEach(item => {
           io.emit("download_progress", {

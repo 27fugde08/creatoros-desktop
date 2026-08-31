@@ -21,6 +21,7 @@ import {
   Film,
   Loader2,
   FolderDown,
+  FolderOpen,
   Copy
 } from "lucide-react";
 import { DownloadQueueItem } from "../types";
@@ -38,6 +39,7 @@ export const BatchDownloaderTool: React.FC = () => {
   const [resolution, setResolution] = useState("1080p (Full HD Gốc)");
   const [removeWatermark, setRemoveWatermark] = useState(true);
   const [extractMp3, setExtractMp3] = useState(false);
+  const [outputDir, setOutputDir] = useState("downloads");
   const [isProcessing, setIsProcessing] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [overallProgress, setOverallProgress] = useState(0);
@@ -45,7 +47,7 @@ export const BatchDownloaderTool: React.FC = () => {
   const [queue, setQueue] = useState<DownloadQueueItem[]>([]);
   const [terminalLogs, setTerminalLogs] = useState<string[]>([
     "[system] Multi-Platform Bulk Downloader Engine sẵn sàng.",
-    "[info] Băng thông đa luồng tải đồng thời, tự động bóc tách ID & xóa Logo/Watermark đa nền tảng."
+    "[info] Băng thông đa luồng tải đồng thời, lưu trực tiếp file .MP4 sạch vào thư mục đã chọn."
   ]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [errorModalItem, setErrorModalItem] = useState<DownloadQueueItem | null>(null);
@@ -67,6 +69,7 @@ export const BatchDownloaderTool: React.FC = () => {
         if (parsed.resolution !== undefined) setResolution(parsed.resolution);
         if (parsed.removeWatermark !== undefined) setRemoveWatermark(parsed.removeWatermark);
         if (parsed.extractMp3 !== undefined) setExtractMp3(parsed.extractMp3);
+        if (parsed.outputDir !== undefined) setOutputDir(parsed.outputDir);
         if (parsed.queue !== undefined) setQueue(parsed.queue);
       } catch (e) {
         console.error("Failed to parse saved state", e);
@@ -117,11 +120,42 @@ export const BatchDownloaderTool: React.FC = () => {
           resolution,
           removeWatermark,
           extractMp3,
+          outputDir,
           queue,
         })
       );
     }
-  }, [bulkUrls, resolution, removeWatermark, extractMp3, queue, isLoaded]);
+  }, [bulkUrls, resolution, removeWatermark, extractMp3, outputDir, queue, isLoaded]);
+
+  // Handler Chọn Thư Mục Lưu qua Electron Native Dialog
+  const handleSelectOutputDir = async () => {
+    soundSynth.playSfx("pop");
+    const isElectron = typeof window !== "undefined" && (window as any).electronAPI;
+    if (isElectron && typeof (window as any).electronAPI.selectDirectory === "function") {
+      try {
+        const res = await (window as any).electronAPI.selectDirectory(outputDir);
+        if (res && res.success && res.dirPath) {
+          setOutputDir(res.dirPath);
+          setTerminalLogs((prev) => [
+            ...prev,
+            `[config] 📁 Đã chọn thư mục lưu trữ: ${res.dirPath}`
+          ]);
+        }
+      } catch (err: any) {
+        console.error("Error choosing directory:", err);
+      }
+    } else {
+      // Fallback web prompt
+      const customPath = prompt("Nhập đường dẫn thư mục lưu trữ trên máy tính:", outputDir);
+      if (customPath && customPath.trim()) {
+        setOutputDir(customPath.trim());
+        setTerminalLogs((prev) => [
+          ...prev,
+          `[config] 📁 Đã thiết lập thư mục lưu trữ: ${customPath.trim()}`
+        ]);
+      }
+    }
+  };
 
   // Calculate link count
   const linkCount = bulkUrls.split("\n").filter((l) => l.trim().length > 0).length;
@@ -186,7 +220,7 @@ export const BatchDownloaderTool: React.FC = () => {
     soundSynth.playSfx("cash");
     setTerminalLogs((prev) => [
       ...prev,
-      `[launch] Bắt đầu tải hàng loạt ${queue.length} video (Độ phân giải: ${resolution}, Xóa Watermark: ${removeWatermark})...`
+      `[launch] Bắt đầu tải hàng loạt ${queue.length} video (Độ phân giải: ${resolution}, Xóa Watermark: ${removeWatermark}, Lưu tại: ${outputDir})...`
     ]);
 
     const isElectron = typeof window !== "undefined" && (window as any).electronAPI;
@@ -215,6 +249,7 @@ export const BatchDownloaderTool: React.FC = () => {
         items: queue,
         resolution,
         remove_watermark: removeWatermark,
+        output_dir: outputDir
       });
     } else {
       try {
@@ -225,6 +260,7 @@ export const BatchDownloaderTool: React.FC = () => {
             items: queue,
             resolution,
             remove_watermark: removeWatermark,
+            output_dir: outputDir
           }),
         });
         if (!response.ok) throw new Error(`Server returned status ${response.status}`);
@@ -239,6 +275,11 @@ export const BatchDownloaderTool: React.FC = () => {
 
   const handleDownloadSingle = async (item: DownloadQueueItem) => {
     soundSynth.playSfx("pop");
+    setTerminalLogs((prev) => [
+      ...prev,
+      `[download] Bắt đầu tải video [${item.videoId || item.id}] về thư mục: ${outputDir}...`
+    ]);
+
     try {
       await fetch(getApiUrl("/api/download/execute"), {
         method: "POST",
@@ -247,33 +288,11 @@ export const BatchDownloaderTool: React.FC = () => {
           items: [item],
           resolution,
           remove_watermark: removeWatermark,
+          output_dir: outputDir
         }),
       });
     } catch (error: any) {
       console.error("Single download error:", error);
-    }
-  };
-
-  const handleDownloadAllZip = async () => {
-    soundSynth.playSfx("success");
-    try {
-      const res = await fetch(getApiUrl("/api/download/zip"));
-      if (res.ok) {
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "CreatorOS_Batch_Export.zip";
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-        confetti({ particleCount: 70, spread: 90, origin: { y: 0.6 } });
-      } else {
-        alert("Không thể tải file ZIP từ server.");
-      }
-    } catch (err) {
-      console.error("ZIP download error:", err);
     }
   };
 
@@ -343,12 +362,42 @@ export const BatchDownloaderTool: React.FC = () => {
 
             <textarea
               id="textarea-bulk-download"
-              rows={7}
+              rows={5}
               value={bulkUrls}
               onChange={(e) => setBulkUrls(e.target.value)}
               placeholder="Dán mỗi dòng 1 link video (TikTok, Douyin, YTB, FB, Instagram, Kuaishou)..."
-              className="w-full px-3.5 py-3 rounded-xl bg-slate-950 border border-slate-700 text-xs font-mono text-slate-100 focus:outline-none focus:border-cyan-500 resize-none leading-relaxed"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs font-mono text-slate-100 focus:outline-none focus:border-cyan-500 resize-none leading-relaxed"
             />
+
+            {/* Folder Selection Picker (Yêu cầu 1) */}
+            <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                  <FolderOpen className="w-3.5 h-3.5 text-amber-400" />
+                  Thư mục lưu trữ video MP4
+                </label>
+                <button
+                  type="button"
+                  onClick={handleSelectOutputDir}
+                  className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                >
+                  <FolderOpen className="w-3 h-3" />
+                  📁 Chọn Thư Mục Lưu
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={outputDir}
+                  onChange={(e) => setOutputDir(e.target.value)}
+                  placeholder="Đường dẫn thư mục (ví dụ: downloads hoặc D:/MyVideos)..."
+                  className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs font-mono text-amber-200 focus:outline-none focus:border-amber-400 truncate"
+                />
+              </div>
+              <p className="text-[10px] text-slate-400">
+                Tất cả file .mp4 tải về sẽ được lưu trực tiếp vào thư mục này.
+              </p>
+            </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
@@ -406,16 +455,16 @@ export const BatchDownloaderTool: React.FC = () => {
           </button>
         </div>
 
-        {/* Right: Task Queue & ZIP Packager */}
+        {/* Right: Task Queue & Table View */}
         <div className="lg:col-span-7 space-y-4">
           {/* Action Header */}
           <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider">
-                Hàng Đợi ({queue.length} video)
+                Danh Sách Quét ({queue.length} video)
               </span>
               <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
-                {completedCount} Đã Xong
+                {completedCount} Đã Lưu
               </span>
             </div>
 
@@ -423,7 +472,7 @@ export const BatchDownloaderTool: React.FC = () => {
               <button
                 onClick={handleDownloadAll}
                 disabled={isProcessing || queue.length === 0}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold disabled:opacity-50 transition-all cursor-pointer"
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold disabled:opacity-50 transition-all cursor-pointer shadow-md shadow-emerald-600/20 active:scale-95"
               >
                 {isProcessing ? (
                   <>
@@ -433,25 +482,15 @@ export const BatchDownloaderTool: React.FC = () => {
                 ) : (
                   <>
                     <Download className="w-3.5 h-3.5" />
-                    <span>2. Khởi Động Script Tải</span>
+                    <span>Tải Toàn Bộ .MP4</span>
                   </>
                 )}
               </button>
 
               <button
-                id="btn-download-zip"
-                onClick={handleDownloadAllZip}
-                disabled={queue.length === 0}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold shadow-md shadow-cyan-600/20 disabled:opacity-50 transition-all cursor-pointer"
-              >
-                <FileArchive className="w-3.5 h-3.5" />
-                <span>Tải Toàn Bộ File ZIP</span>
-              </button>
-
-              <button
                 onClick={handleClearQueue}
                 className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-700 cursor-pointer"
-                title="Xóa hàng đợi"
+                title="Xóa danh sách"
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </button>

@@ -408,33 +408,25 @@ def main() -> None:
         res = download_single_item(item, args.out_dir, args.resolution, args.no_watermark)
         completed_items.append(res)
 
-        overall_prog = int(((idx + 1) / total) * 90)
+        overall_prog = int(((idx + 1) / total) * 100)
         send_ipc({
             "stage": "overall_progress",
             "completed_count": idx + 1,
             "total_items": total,
             "progress": overall_prog,
-            "message": f"Đã xử lý {idx + 1}/{total} video"
+            "message": f"Đã xử lý {idx + 1}/{total} video -> Lưu tại: {args.out_dir}"
         })
 
-    # Pack into ZIP
-    send_ipc({
-        "stage": "zipping",
-        "status": "zipping",
-        "progress": 95,
-        "message": "Đang đóng gói toàn bộ video vào tệp .ZIP..."
-    })
-
-    zip_path = os.path.join(args.out_dir, args.zip_name)
-    final_zip, count = package_zip(args.out_dir, zip_path)
+    # Dọn dẹp sạch sẽ toàn bộ thư mục đích
+    cleanup_non_mp4_files(args.out_dir)
 
     send_ipc({
         "stage": "all_completed",
         "status": "completed",
         "progress": 100,
-        "zip_path": final_zip,
-        "total_files": count,
-        "message": f"🎉 Tải thành công toàn bộ {total} video và đóng gói ZIP ({count} tệp)!"
+        "out_dir": args.out_dir,
+        "total_files": len(completed_items),
+        "message": f"🎉 Tải thành công toàn bộ {total} video .MP4 trực tiếp vào thư mục: {args.out_dir}!"
     })
 
 

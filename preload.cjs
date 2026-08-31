@@ -1,6 +1,9 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  // Native File & Directory Dialogs
+  selectDirectory: (defaultPath) => ipcRenderer.invoke('select-directory-dialog', defaultPath),
+
   // JSON-RPC 2.0 Enterprise IPC
   invokeJsonRpc: (method, params) => ipcRenderer.invoke('json-rpc-invoke', { method, params }),
 

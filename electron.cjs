@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -309,6 +309,24 @@ app.on('window-all-closed', () => {
   }
   if (process.platform !== 'darwin') {
     app.quit();
+  }
+});
+
+// Native Directory / File Dialog Handler
+ipcMain.handle('select-directory-dialog', async (event, defaultPath) => {
+  try {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Chọn thư mục lưu trữ video MP4',
+      defaultPath: defaultPath || app.getPath('downloads'),
+      properties: ['openDirectory', 'createDirectory']
+    });
+    if (!result.canceled && result.filePaths.length > 0) {
+      return { success: true, dirPath: result.filePaths[0] };
+    }
+    return { success: false, canceled: true };
+  } catch (err) {
+    console.error('Error selecting directory:', err);
+    return { success: false, error: err.message };
   }
 });
 
