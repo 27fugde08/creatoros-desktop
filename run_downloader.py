@@ -265,6 +265,15 @@ def download_worker(
         'socket_timeout': 20,
         'retries': 3,
         'nocheckcertificate': True,
+        'writethumbnail': False,
+        'writeinfojson': False,
+        'writesubtitles': False,
+        'writeautomaticsub': False,
+        'merge_output_format': 'mp4',
+        'postprocessors': [{
+            'key': 'FFmpegVideoConvertor',
+            'preferedformat': 'mp4',
+        }],
     }
 
     if platform == 'tiktok' or platform == 'douyin':

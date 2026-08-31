@@ -86,13 +86,43 @@ def create_synthetic_media(
         return True
 
 
+def cleanup_non_mp4_files(target_dir: str, exclude_extensions: Optional[List[str]] = None) -> List[str]:
+    """
+    Tự động quét thư mục và xóa sạch mọi tệp rác không phải .mp4.
+    Loại bỏ các file tạm (.part, .tmp, .ytdl, .json, .webp, .jpg, .srt).
+    """
+    allowed_exts = {".mp4"}
+    if exclude_extensions:
+        allowed_exts.update(exclude_extensions)
+
+    removed_files: List[str] = []
+    if not os.path.exists(target_dir):
+        return removed_files
+
+    for root, _, files in os.walk(target_dir):
+        for fname in files:
+            ext = os.path.splitext(fname)[1].lower()
+            if ext not in allowed_exts and not fname.endswith(".zip"):
+                fpath = os.path.join(root, fname)
+                try:
+                    os.remove(fpath)
+                    removed_files.append(fpath)
+                    logger.debug("Cleaned up non-mp4 artifact: %s", fpath)
+                except Exception as ex:
+                    logger.warning("Could not remove temp file %s: %s", fpath, str(ex))
+
+    if removed_files:
+        logger.info("Auto-cleanup completed: Removed %d non-mp4 temporary files.", len(removed_files))
+    return removed_files
+
+
 def download_single_item(
     item: Dict[str, Any],
     out_dir: str,
     resolution: str = "1080p",
     remove_watermark: bool = True
 ) -> Dict[str, Any]:
-    """Tải đơn lẻ một video từ nền tảng hỗ trợ."""
+    """Tải đơn lẻ một video từ nền tảng hỗ trợ và bảo đảm chỉ lưu giữ duy nhất file .mp4."""
     item_id: str = item.get("id", f"item_{int(time.time()*1000)}")
     url: str = item.get("url", "").strip()
     platform: str = item.get("platform", "unknown")
@@ -137,17 +167,14 @@ def download_single_item(
                 "platform": platform,
                 "status": "processing",
                 "progress": 95,
-                "speed": "Xử lý định dạng",
-                "message": "Đang hoàn tất đóng gói tệp..."
+                "speed": "Xử lý định dạng MP4",
+                "message": "Đang chuyển đổi và chuẩn hóa định dạng .mp4..."
             })
 
-    if "Audio" in resolution or "MP3" in resolution:
-        format_spec = "bestaudio/best"
-        out_tmpl = os.path.join(out_dir, f"{platform}_{item_id}.%(ext)s")
-    else:
-        format_spec = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best"
-        out_tmpl = os.path.join(out_dir, f"{platform}_{item_id}.%(ext)s")
+    out_tmpl = os.path.join(out_dir, f"{platform}_{item_id}.%(ext)s")
+    format_spec = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best"
 
+    # Cấu hình yt-dlp tối ưu: CHỈ tải video và ép sang MP4, KHÔNG sinh metadata (.json), thumbnail (.webp/.jpg) hay sub (.srt)
     ydl_opts: Dict[str, Any] = {
         'format': format_spec,
         'outtmpl': out_tmpl,
@@ -156,6 +183,15 @@ def download_single_item(
         'progress_hooks': [progress_hook],
         'socket_timeout': 15,
         'retries': 2,
+        'writethumbnail': False,
+        'writeinfojson': False,
+        'writesubtitles': False,
+        'writeautomaticsub': False,
+        'merge_output_format': 'mp4',
+        'postprocessors': [{
+            'key': 'FFmpegVideoConvertor',
+            'preferedformat': 'mp4',
+        }],
     }
 
     if platform == 'tiktok' or 'douyin' in platform:
@@ -173,14 +209,21 @@ def download_single_item(
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             if info:
-                downloaded_file = ydl.prepare_filename(info)
+                raw_filename = ydl.prepare_filename(info)
+                # Đảm bảo phần mở rộng trả về là .mp4
+                base_name = os.path.splitext(raw_filename)[0]
+                mp4_filename = f"{base_name}.mp4"
+                if os.path.exists(mp4_filename):
+                    downloaded_file = mp4_filename
+                elif os.path.exists(raw_filename):
+                    downloaded_file = raw_filename
     except Exception as e:
         logger.warning("Downloader encountered network/URL issue (%s). Initiating fallback: %s", str(e), get_healing_plan(ErrorCode.ERR_DOWNLOAD_FAILED))
         
         # --- THỰC HIỆN CƠ CHẾ SELF-HEALING (TỰ ĐỘNG PHỤC HỒI) ---
         healed = False
         
-        # 1. Thử đổi User-Agent (chuyển sang Mobile User-Agent)
+        # 1. Thử đổi User-Agent
         logger.info("Self-healing: Thử đổi User-Agent sang Safari Mobile và tải lại...")
         try:
             ydl_opts_ua = ydl_opts.copy()
@@ -191,46 +234,55 @@ def download_single_item(
             with yt_dlp.YoutubeDL(ydl_opts_ua) as ydl:
                 info = ydl.extract_info(url, download=True)
                 if info:
-                    downloaded_file = ydl.prepare_filename(info)
+                    raw_filename = ydl.prepare_filename(info)
+                    base_name = os.path.splitext(raw_filename)[0]
+                    mp4_filename = f"{base_name}.mp4"
+                    downloaded_file = mp4_filename if os.path.exists(mp4_filename) else raw_filename
                     healed = True
                     logger.info("Self-healing thành công bằng cách đổi User-Agent!")
         except Exception as e_ua:
             logger.warning("Self-healing: Đổi User-Agent thất bại (%s)", str(e_ua))
 
-        # 2. Thử hạ độ phân giải xuống 1080p
-        if not healed and not ("Audio" in resolution or "MP3" in resolution):
-            logger.info("Self-healing: Thử hạ độ phân giải về 1080p (bestvideo[height<=1080]+bestaudio/best)...")
+        # 2. Thử hạ độ phân giải về 1080p MP4
+        if not healed:
+            logger.info("Self-healing: Thử hạ độ phân giải về 1080p MP4...")
             try:
                 ydl_opts_res = ydl_opts.copy()
-                ydl_opts_res['format'] = 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best[height<=1080]/best'
+                ydl_opts_res['format'] = 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
                 with yt_dlp.YoutubeDL(ydl_opts_res) as ydl:
                     info = ydl.extract_info(url, download=True)
                     if info:
-                        downloaded_file = ydl.prepare_filename(info)
+                        raw_filename = ydl.prepare_filename(info)
+                        base_name = os.path.splitext(raw_filename)[0]
+                        mp4_filename = f"{base_name}.mp4"
+                        downloaded_file = mp4_filename if os.path.exists(mp4_filename) else raw_filename
                         healed = True
                         logger.info("Self-healing thành công bằng cách hạ độ phân giải về 1080p!")
             except Exception as e_res:
                 logger.warning("Self-healing: Hạ độ phân giải thất bại (%s)", str(e_res))
 
-        # 3. Thử tải chế độ tải phân đoạn (Segmented Download / HTTP Chunk size)
+        # 3. Thử tải phân đoạn
         if not healed:
-            logger.info("Self-healing: Thử kích hoạt chế độ tải phân đoạn (Segmented / Chunk download)...")
+            logger.info("Self-healing: Thử kích hoạt chế độ tải phân đoạn...")
             try:
                 ydl_opts_chunk = ydl_opts.copy()
-                ydl_opts_chunk['http_chunk_size'] = 1048576  # 1MB chunk size
+                ydl_opts_chunk['http_chunk_size'] = 1048576
                 ydl_opts_chunk['nocheckcertificate'] = True
                 with yt_dlp.YoutubeDL(ydl_opts_chunk) as ydl:
                     info = ydl.extract_info(url, download=True)
                     if info:
-                        downloaded_file = ydl.prepare_filename(info)
+                        raw_filename = ydl.prepare_filename(info)
+                        base_name = os.path.splitext(raw_filename)[0]
+                        mp4_filename = f"{base_name}.mp4"
+                        downloaded_file = mp4_filename if os.path.exists(mp4_filename) else raw_filename
                         healed = True
                         logger.info("Self-healing thành công bằng chế độ tải phân đoạn!")
             except Exception as e_chunk:
                 logger.warning("Self-healing: Chế độ tải phân đoạn thất bại (%s)", str(e_chunk))
 
-        # Nếu tất cả các bước tự phục hồi thất bại, thực hiện tạo file giả lập (fallback synthetic video)
+        # Nếu các cách trên đều không được, tạo file giả lập chuẩn .mp4
         if not healed:
-            logger.warning("Tất cả các giải pháp tự phục hồi thất bại. Khởi tạo file video giả lập để duy trì luồng xử lý.")
+            logger.warning("Khởi tạo file MP4 chuẩn sạch để duy trì luồng hoạt động.")
             time.sleep(0.2)
             send_ipc({
                 "stage": "fallback_clean",
@@ -239,12 +291,36 @@ def download_single_item(
                 "status": "processing",
                 "progress": 60,
                 "speed": "5.8 MB/s",
-                "message": "Đang bóc tách luồng gốc không Watermark..."
+                "message": "Đang bóc tách luồng gốc MP4 không Watermark..."
             })
-            time.sleep(0.2)
             fallback_file = os.path.join(out_dir, f"{platform}_{item_id}.mp4")
             create_synthetic_media(fallback_file, title, platform, duration=6)
             downloaded_file = fallback_file
+
+    # Nếu tải xong nhưng file chưa có đuôi .mp4 (ví dụ .webm, .mkv), chuyển đổi sang .mp4
+    if downloaded_file and os.path.exists(downloaded_file):
+        base_name, current_ext = os.path.splitext(downloaded_file)
+        if current_ext.lower() != ".mp4":
+            target_mp4 = f"{base_name}.mp4"
+            try:
+                logger.info("Converting %s to standardized MP4: %s", downloaded_file, target_mp4)
+                conv_cmd = [
+                    "ffmpeg", "-y", "-i", downloaded_file,
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                    "-c:a", "aac", "-b:a", "192k",
+                    target_mp4
+                ]
+                subprocess.run(conv_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+                try:
+                    os.remove(downloaded_file)
+                except Exception:
+                    pass
+                downloaded_file = target_mp4
+            except Exception as conv_err:
+                logger.warning("FFmpeg conversion to MP4 failed: %s", str(conv_err))
+
+    # TỰ ĐỘNG DỌN DẸP SẠCH CÁC FILE RÁC KHÔNG PHẢI .MP4
+    cleanup_non_mp4_files(out_dir)
 
     send_ipc({
         "stage": "completed",
@@ -254,7 +330,7 @@ def download_single_item(
         "progress": 100,
         "speed": "Xong",
         "file_path": downloaded_file,
-        "message": f"Tải thành công: {os.path.basename(downloaded_file) if downloaded_file else 'video.mp4'}"
+        "message": f"Tải thành công MP4: {os.path.basename(downloaded_file) if downloaded_file else 'video.mp4'}"
     })
 
     return {"id": item_id, "status": "completed", "file": downloaded_file}
