@@ -130,7 +130,8 @@ export const BatchDownloaderTool: React.FC = () => {
   // Handler Chọn Thư Mục Lưu qua Electron Native Dialog
   const handleSelectOutputDir = async () => {
     soundSynth.playSfx("pop");
-    const isElectron = typeof window !== "undefined" && (window as any).electronAPI;
+    const isElectron = typeof window !== "undefined" && Boolean((window as any).electronAPI);
+    
     if (isElectron && typeof (window as any).electronAPI.selectDirectory === "function") {
       try {
         const res = await (window as any).electronAPI.selectDirectory(outputDir);
@@ -138,22 +139,36 @@ export const BatchDownloaderTool: React.FC = () => {
           setOutputDir(res.dirPath);
           setTerminalLogs((prev) => [
             ...prev,
-            `[config] 📁 Đã chọn thư mục lưu trữ: ${res.dirPath}`
+            `[config] 📁 Đã chọn thư mục từ hệ điều hành: ${res.dirPath}`
           ]);
         }
       } catch (err: any) {
-        console.error("Error choosing directory:", err);
+        console.error("Error choosing directory via Electron:", err);
+      }
+    } else if (typeof window !== "undefined" && "showDirectoryPicker" in window) {
+      // Modern Web File System Access API Fallback (Không cần gõ tay)
+      try {
+        const handle = await (window as any).showDirectoryPicker();
+        if (handle && handle.name) {
+          const webPath = `Downloads/${handle.name}`;
+          setOutputDir(webPath);
+          setTerminalLogs((prev) => [
+            ...prev,
+            `[config] 📁 Đã cấp quyền lưu vào thư mục: ${handle.name}`
+          ]);
+        }
+      } catch (err: any) {
+        // User cancelled picker
+        if (err.name !== "AbortError") {
+          console.warn("Directory picker error:", err);
+        }
       }
     } else {
-      // Fallback web prompt
-      const customPath = prompt("Nhập đường dẫn thư mục lưu trữ trên máy tính:", outputDir);
-      if (customPath && customPath.trim()) {
-        setOutputDir(customPath.trim());
-        setTerminalLogs((prev) => [
-          ...prev,
-          `[config] 📁 Đã thiết lập thư mục lưu trữ: ${customPath.trim()}`
-        ]);
-      }
+      // Fallback thông báo thân thiện
+      setTerminalLogs((prev) => [
+        ...prev,
+        `[info] 💡 Ứng dụng đang ở chế độ Web. Thư mục mặc định: ${outputDir}`
+      ]);
     }
   };
 
