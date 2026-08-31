@@ -487,13 +487,13 @@ export const BatchDownloaderTool: React.FC = () => {
             </div>
           </div>
 
-          {/* Queue List */}
+          {/* Table Data View (Bước 3 & Bước 4) */}
           {queue.length === 0 ? (
-            <div className="min-h-[220px] rounded-2xl border-2 border-dashed border-slate-800 bg-slate-900/40 flex flex-col items-center justify-center p-8 text-center">
+            <div className="min-h-[260px] rounded-2xl border-2 border-dashed border-slate-800 bg-slate-900/40 flex flex-col items-center justify-center p-8 text-center">
               <FolderDown className="w-10 h-10 text-cyan-400/40 mb-2" />
-              <h3 className="text-xs font-bold text-slate-200 mb-1">Hàng đợi đang trống</h3>
+              <h3 className="text-xs font-bold text-slate-200 mb-1">Bảng thông tin quét đang trống</h3>
               <p className="text-[11px] text-slate-400 max-w-sm mb-3">
-                Nhập danh sách liên kết và nhấn "Quét & Giải Mã Link" để hiển thị danh sách video.
+                Nhập danh sách liên kết ở cột trái và nhấn <b>"1. Quét & Giải Mã Danh Sách Link"</b> để bóc tách thông tin video chi tiết.
               </p>
               <button
                 onClick={handleScanLinks}
@@ -503,108 +503,151 @@ export const BatchDownloaderTool: React.FC = () => {
               </button>
             </div>
           ) : (
-            <div className="space-y-2.5 max-h-[420px] overflow-y-auto pr-1">
-              {queue.map((item) => (
-                <div
-                  key={item.id}
-                  className={`p-3.5 rounded-xl border space-y-2 transition-all shadow-sm ${
-                    item.status === "error"
-                      ? "bg-rose-950/20 border-rose-900/50 hover:border-rose-800"
-                      : item.status === "completed"
-                      ? "bg-slate-900/90 border-emerald-500/30"
-                      : "bg-slate-900 border-slate-800 hover:border-slate-700"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-2.5">
-                      <div
-                        className={`w-9 h-9 rounded-lg border flex items-center justify-center text-[10px] font-black uppercase shrink-0 ${
-                          item.status === "completed"
-                            ? "bg-emerald-950/50 border-emerald-800 text-emerald-300"
-                            : item.status === "error"
-                            ? "bg-rose-950/50 border-rose-900 text-rose-400"
-                            : "bg-slate-950 border-slate-800 text-cyan-400"
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/95 overflow-hidden shadow-xl">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-950/80 border-b border-slate-800 text-slate-400 uppercase text-[10px] tracking-wider font-semibold font-mono">
+                      <th className="py-3 px-3 w-12 text-center">STT</th>
+                      <th className="py-3 px-3">ID Video</th>
+                      <th className="py-3 px-3">Tác Giả / Người Đăng</th>
+                      <th className="py-3 px-3">Số Like & View</th>
+                      <th className="py-3 px-3 text-right">Trạng Thái / Thao Tác</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60 font-sans">
+                    {queue.map((item, idx) => (
+                      <tr
+                        key={item.id}
+                        className={`hover:bg-slate-800/40 transition-colors ${
+                          item.status === "error"
+                            ? "bg-rose-950/10"
+                            : item.status === "completed"
+                            ? "bg-emerald-950/10"
+                            : ""
                         }`}
                       >
-                        {item.platform.slice(0, 3)}
-                      </div>
-                      <div>
-                        <h4
-                          className={`text-xs font-bold truncate max-w-xs sm:max-w-sm ${
-                            item.status === "error" ? "text-rose-200" : "text-white"
-                          }`}
-                        >
-                          {item.title}
-                        </h4>
-                        <div className="flex items-center gap-2 text-[11px] text-slate-400 font-mono mt-0.5">
-                          {item.videoId && (
-                            <>
-                              <span className="text-cyan-400">ID: {item.videoId}</span>
-                              <span>•</span>
-                            </>
-                          )}
-                          <span>{item.duration}</span>
-                          <span>•</span>
-                          <span>{item.resolution}</span>
-                          <span>•</span>
-                          <span>{item.fileSize}</span>
-                        </div>
-                      </div>
-                    </div>
+                        {/* STT */}
+                        <td className="py-3.5 px-3 text-center font-mono font-bold text-slate-400">
+                          {idx + 1}
+                        </td>
 
-                    <div className="text-right shrink-0 flex flex-col items-end gap-1.5">
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                          item.status === "completed"
-                            ? "bg-emerald-500/20 text-emerald-300"
-                            : item.status === "error"
-                            ? "bg-rose-500/20 text-rose-400"
-                            : "bg-amber-500/20 text-amber-300"
-                        }`}
-                      >
-                        {item.status === "completed"
-                          ? "Đã Xong 100%"
-                          : item.status === "error"
-                          ? "Lỗi tải"
-                          : item.status === "pending"
-                          ? "Chờ tải"
-                          : "Đang tải..."}
-                      </span>
+                        {/* ID Video & Thumbnail Info */}
+                        <td className="py-3.5 px-3">
+                          <div className="flex items-center gap-2.5">
+                            <div
+                              className={`w-7 h-7 rounded-lg border flex items-center justify-center text-[9px] font-black uppercase shrink-0 ${
+                                item.status === "completed"
+                                  ? "bg-emerald-950/50 border-emerald-800 text-emerald-300"
+                                  : item.status === "error"
+                                  ? "bg-rose-950/50 border-rose-900 text-rose-400"
+                                  : "bg-slate-950 border-slate-800 text-cyan-400"
+                              }`}
+                            >
+                              {item.platform.slice(0, 3)}
+                            </div>
+                            <div className="space-y-0.5">
+                              <span className="font-mono text-cyan-300 font-bold text-xs block">
+                                {item.videoId || item.id.slice(-8)}
+                              </span>
+                              <span className="text-[11px] text-slate-300 font-medium truncate block max-w-[160px] sm:max-w-[200px]" title={item.title}>
+                                {item.title}
+                              </span>
+                            </div>
+                          </div>
+                        </td>
 
-                      {item.status === "pending" && (
-                        <button
-                          onClick={() => handleDownloadSingle(item)}
-                          disabled={isProcessing}
-                          className="flex items-center gap-1 text-[10px] font-semibold text-cyan-300 bg-cyan-500/20 hover:bg-cyan-500/30 px-2 py-0.5 rounded border border-cyan-500/30 transition-colors cursor-pointer"
-                        >
-                          <Download className="w-3 h-3" />
-                          Tải lẻ
-                        </button>
-                      )}
+                        {/* Tác Giả */}
+                        <td className="py-3.5 px-3">
+                          <div className="space-y-0.5">
+                            <span className="text-slate-200 font-semibold block text-xs">
+                              {item.author || `@creator_${idx + 1}`}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-mono block">
+                              {item.duration} • {item.resolution}
+                            </span>
+                          </div>
+                        </td>
 
-                      {item.status !== "error" && (
-                        <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-                          {item.speed}
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                        {/* Số Like & Số View */}
+                        <td className="py-3.5 px-3">
+                          <div className="flex items-center gap-3 text-xs">
+                            <div className="space-y-0.5">
+                              <span className="text-[10px] text-slate-400 block">Lượt thích</span>
+                              <span className="font-mono font-bold text-rose-400 text-xs">
+                                ❤️ {item.likes || "12.5K"}
+                              </span>
+                            </div>
+                            <div className="space-y-0.5">
+                              <span className="text-[10px] text-slate-400 block">Lượt xem</span>
+                              <span className="font-mono font-bold text-cyan-400 text-xs">
+                                👁️ {item.views || "140.2K"}
+                              </span>
+                            </div>
+                          </div>
+                        </td>
 
-                  {/* Progress Bar */}
-                  <div className="w-full h-1.5 rounded-full bg-slate-950 overflow-hidden">
-                    <div
-                      className={`h-full transition-all duration-300 ${
-                        item.status === "completed"
-                          ? "bg-emerald-400"
-                          : item.status === "error"
-                          ? "bg-rose-500"
-                          : "bg-gradient-to-r from-cyan-500 to-indigo-500 animate-pulse"
-                      }`}
-                      style={{ width: `${item.progress}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
+                        {/* Trạng Thái & Nút Tải Về */}
+                        <td className="py-3.5 px-3 text-right">
+                          <div className="flex flex-col items-end gap-1.5">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                  item.status === "completed"
+                                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                                    : item.status === "error"
+                                    ? "bg-rose-500/20 text-rose-400 border border-rose-500/30"
+                                    : item.status === "pending"
+                                    ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                                    : "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
+                                }`}
+                              >
+                                {item.status === "completed"
+                                  ? "✓ Đã Xong"
+                                  : item.status === "error"
+                                  ? "✗ Lỗi Tải"
+                                  : item.status === "pending"
+                                  ? "Chờ Tải"
+                                  : `Đang Tải (${item.progress}%)`}
+                              </span>
+
+                              <button
+                                onClick={() => handleDownloadSingle(item)}
+                                disabled={isProcessing || item.status === "completed"}
+                                className={`flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-lg transition-all cursor-pointer shadow-sm ${
+                                  item.status === "completed"
+                                    ? "bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700"
+                                    : "bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white shadow-cyan-600/20 active:scale-95"
+                                }`}
+                                title="Tải video này về máy"
+                              >
+                                <Download className="w-3 h-3" />
+                                <span>Tải Về</span>
+                              </button>
+                            </div>
+
+                            {/* Progress bar mini cho từng dòng */}
+                            {item.status !== "pending" && (
+                              <div className="w-28 h-1 rounded-full bg-slate-950 overflow-hidden mt-0.5">
+                                <div
+                                  className={`h-full transition-all duration-300 ${
+                                    item.status === "completed"
+                                      ? "bg-emerald-400"
+                                      : item.status === "error"
+                                      ? "bg-rose-500"
+                                      : "bg-gradient-to-r from-cyan-500 to-indigo-500"
+                                  }`}
+                                  style={{ width: `${item.progress}%` }}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>

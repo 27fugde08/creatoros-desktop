@@ -193,6 +193,9 @@ export interface DownloadQueueItem {
   url: string;
   platform: "tiktok" | "youtube" | "douyin" | "facebook" | "instagram" | "kuaishou" | "unknown";
   title: string;
+  author?: string;
+  likes?: string | number;
+  views?: string | number;
   thumbnail: string;
   duration: string;
   resolution: string;
@@ -204,6 +207,7 @@ export interface DownloadQueueItem {
   retryAttempts?: number;
   errorLogs?: string[];
   videoId?: string;
+  filePath?: string;
 }
 
 // Global Task Queue Types

@@ -1213,6 +1213,9 @@ app.post("/api/download/scan", async (req, res) => {
     let platform = "tiktok";
     let videoId = `vid_${Date.now()}_${index + 1}`;
     let title = `Video Clip ${index + 1}`;
+    let author = `@creator_${index + 1}`;
+    let likes = `${(Math.random() * 80 + 5).toFixed(1)}K`;
+    let views = `${(Math.random() * 850 + 50).toFixed(1)}K`;
     let duration = "00:25";
     let resLabel = "1080p (Full HD)";
 
@@ -1223,6 +1226,9 @@ app.post("/api/download/scan", async (req, res) => {
       const match = cleanUrl.match(/video\/(\d+)/);
       if (match) videoId = match[1];
       else if (/vt\.tiktok\.com/i.test(cleanUrl)) videoId = "73" + Math.floor(1000000 + Math.random() * 9000000);
+      const userMatch = cleanUrl.match(/@([a-zA-Z0-9_.-]+)/);
+      if (userMatch) author = `@${userMatch[1]}`;
+      else author = `@tiktok_creator`;
       title = `TikTok Viral #${videoId.slice(-4)}`;
       duration = "00:15";
     } else if (/douyin\.com/i.test(cleanUrl) || /iesdouyin\.com/i.test(cleanUrl)) {
@@ -1230,6 +1236,7 @@ app.post("/api/download/scan", async (req, res) => {
       const match = cleanUrl.match(/video\/(\d+)/);
       if (match) videoId = match[1];
       else videoId = "72" + Math.floor(1000000 + Math.random() * 9000000);
+      author = `@douyin_idol_${videoId.slice(-3)}`;
       title = `Douyin HD #${videoId.slice(-4)}`;
       duration = "00:20";
       resLabel = "1080p+ (Chất Lượng Cao)";
@@ -1237,24 +1244,28 @@ app.post("/api/download/scan", async (req, res) => {
       platform = "youtube";
       const match = cleanUrl.match(/(?:shorts\/|v=|youtu\.be\/)([a-zA-Z0-9_-]+)/);
       if (match) videoId = match[1];
+      author = "@shorts_official";
       title = `YouTube Shorts #${videoId.slice(0, 5)}`;
       duration = "00:30";
     } else if (/facebook\.com/i.test(cleanUrl) || /fb\.watch/i.test(cleanUrl)) {
       platform = "facebook";
       const match = cleanUrl.match(/(?:reel\/|videos\/)(\d+)/);
       if (match) videoId = match[1];
+      author = "Ghiền Phim Review";
       title = `Facebook Reel #${videoId ? videoId.slice(-4) : "Media"}`;
       duration = "00:45";
     } else if (/instagram\.com/i.test(cleanUrl) || /instagr\.am/i.test(cleanUrl)) {
       platform = "instagram";
       const match = cleanUrl.match(/reel\/([a-zA-Z0-9_-]+)/);
       if (match) videoId = match[1];
+      author = "@insta_reels_vn";
       title = `Instagram Reel #${videoId ? videoId.slice(0, 5) : "Post"}`;
       duration = "00:18";
     } else if (/kuaishou\.com/i.test(cleanUrl) || /kwai\.com/i.test(cleanUrl)) {
       platform = "kuaishou";
       const match = cleanUrl.match(/photo\/([a-zA-Z0-9_-]+)/);
       if (match) videoId = match[1];
+      author = "@kwai_trend";
       title = `Kuaishou Kwai #${videoId ? videoId.slice(0, 5) : "Clip"}`;
       duration = "00:22";
     }
@@ -1265,6 +1276,9 @@ app.post("/api/download/scan", async (req, res) => {
       platform,
       videoId,
       title,
+      author,
+      likes,
+      views,
       thumbnail: `https://picsum.photos/seed/${videoId}/300/180`,
       duration,
       resolution: resLabel,
