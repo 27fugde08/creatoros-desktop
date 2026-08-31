@@ -1,5 +1,9 @@
-// Proxy file to maintain backward compatibility while delegating to electron/electron.cjs
-require('./electron/electron.cjs');
+const { app, BrowserWindow, Menu, ipcMain, dialog } = require('electron');
+const path = require('path');
+const fs = require('fs');
+const { spawn } = require('child_process');
+const si = require('systeminformation');
+const WebSocket = require('ws');
 
 let mainWindow = null;
 let activePyProcess = null;
@@ -46,12 +50,16 @@ function configureUserDataEnvironment() {
 function startPythonWsBridge() {
   try {
     const isWin = process.platform === 'win32';
+    const projectRoot = path.resolve(__dirname, '..');
     const packagedExePath = path.join(process.resourcesPath || __dirname, 'bin', isWin ? 'creatoros_core.exe' : 'creatoros_core');
     const altExePath = path.join(process.resourcesPath || __dirname, isWin ? 'creatoros_core.exe' : 'creatoros_core');
     const pythonCmd = isWin ? 'python' : 'python3';
 
     let spawnCmd = pythonCmd;
-    let spawnArgs = ['py_ws_bridge.py', '--port', '8765'];
+    const pyScriptPath = fs.existsSync(path.join(projectRoot, 'python_core', 'py_ws_bridge.py'))
+      ? path.join(projectRoot, 'python_core', 'py_ws_bridge.py')
+      : path.join(projectRoot, 'py_ws_bridge.py');
+    let spawnArgs = [pyScriptPath, '--port', '8765'];
 
     if (app.isPackaged && fs.existsSync(packagedExePath)) {
       console.log(`[Electron Main] Khởi chạy Standalone Python Core binary: ${packagedExePath}`);
@@ -62,14 +70,15 @@ function startPythonWsBridge() {
       spawnCmd = altExePath;
       spawnArgs = ['--port', '8765'];
     } else {
-      console.log(`[Electron Main] Khởi động Python WebSocket JSON-RPC Bridge từ mã nguồn: ${pythonCmd} py_ws_bridge.py`);
+      console.log(`[Electron Main] Khởi động Python WebSocket JSON-RPC Bridge từ mã nguồn: ${pythonCmd} ${pyScriptPath}`);
     }
 
     wsBridgeProcess = spawn(spawnCmd, spawnArgs, {
-      cwd: __dirname,
+      cwd: projectRoot,
       env: {
         ...process.env,
-        PYTHONUNBUFFERED: '1'
+        PYTHONUNBUFFERED: '1',
+        PYTHONPATH: `${path.join(projectRoot, 'python_core')}${path.delimiter}${path.join(projectRoot, 'python_core', 'engines')}${path.delimiter}${projectRoot}${path.delimiter}${process.env.PYTHONPATH || ''}`
       }
     });
 
@@ -272,12 +281,16 @@ function createWindow() {
 
 app.whenReady().then(() => {
   configureUserDataEnvironment();
+  const projectRoot = path.resolve(__dirname, '..');
   try {
     if (app.isPackaged) {
-      require(path.join(__dirname, 'dist/server.cjs'));
+      require(path.join(process.resourcesPath || __dirname, 'dist/server.cjs'));
     } else {
       try {
-        require('./dist/server.cjs');
+        const devServerPath = fs.existsSync(path.join(projectRoot, 'dist/server.cjs'))
+          ? path.join(projectRoot, 'dist/server.cjs')
+          : path.join(__dirname, 'dist/server.cjs');
+        require(devServerPath);
       } catch (e) {
         console.log("dist/server.cjs dev mode.");
       }

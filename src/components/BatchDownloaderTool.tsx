@@ -39,6 +39,9 @@ export const BatchDownloaderTool: React.FC = () => {
   const [resolution, setResolution] = useState("1080p (Full HD Gốc)");
   const [removeWatermark, setRemoveWatermark] = useState(true);
   const [extractMp3, setExtractMp3] = useState(false);
+  const [cookie, setCookie] = useState("");
+  const [proxy, setProxy] = useState("direct");
+  const [highestQuality, setHighestQuality] = useState(true);
   const [outputDir, setOutputDir] = useState("downloads");
   const [isProcessing, setIsProcessing] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
@@ -53,6 +56,7 @@ export const BatchDownloaderTool: React.FC = () => {
   const [errorModalItem, setErrorModalItem] = useState<DownloadQueueItem | null>(null);
 
   const terminalRef = useRef<HTMLDivElement | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (terminalRef.current) {
@@ -69,6 +73,9 @@ export const BatchDownloaderTool: React.FC = () => {
         if (parsed.resolution !== undefined) setResolution(parsed.resolution);
         if (parsed.removeWatermark !== undefined) setRemoveWatermark(parsed.removeWatermark);
         if (parsed.extractMp3 !== undefined) setExtractMp3(parsed.extractMp3);
+        if (parsed.cookie !== undefined) setCookie(parsed.cookie);
+        if (parsed.proxy !== undefined) setProxy(parsed.proxy);
+        if (parsed.highestQuality !== undefined) setHighestQuality(parsed.highestQuality);
         if (parsed.outputDir !== undefined) setOutputDir(parsed.outputDir);
         if (parsed.queue !== undefined) setQueue(parsed.queue);
       } catch (e) {
@@ -120,54 +127,49 @@ export const BatchDownloaderTool: React.FC = () => {
           resolution,
           removeWatermark,
           extractMp3,
+          cookie,
+          proxy,
+          highestQuality,
           outputDir,
           queue,
         })
       );
     }
-  }, [bulkUrls, resolution, removeWatermark, extractMp3, outputDir, queue, isLoaded]);
+  }, [bulkUrls, resolution, removeWatermark, extractMp3, cookie, proxy, highestQuality, outputDir, queue, isLoaded]);
 
-  // Handler Chọn Thư Mục Lưu qua Electron Native Dialog
+  // Handler Chọn Thư Mục Lưu qua Web File System Access API (showDirectoryPicker)
   const handleSelectOutputDir = async () => {
     soundSynth.playSfx("pop");
-    const isElectron = typeof window !== "undefined" && Boolean((window as any).electronAPI);
     
-    if (isElectron && typeof (window as any).electronAPI.selectDirectory === "function") {
+    // 1. Kiểm tra hỗ trợ Web File System Access API chuẩn (showDirectoryPicker)
+    if (typeof window !== "undefined" && typeof (window as any).showDirectoryPicker === "function") {
       try {
-        const res = await (window as any).electronAPI.selectDirectory(outputDir);
-        if (res && res.success && res.dirPath) {
-          setOutputDir(res.dirPath);
+        const dirHandle = await (window as any).showDirectoryPicker({
+          id: "creatoros_download_picker",
+          mode: "readwrite",
+          startIn: "downloads"
+        });
+
+        if (dirHandle && dirHandle.name) {
+          // Lưu tên thư mục được chọn
+          const folderName = dirHandle.name;
+          setOutputDir(folderName);
           setTerminalLogs((prev) => [
             ...prev,
-            `[config] 📁 Đã chọn thư mục từ hệ điều hành: ${res.dirPath}`
+            `[config] 📁 Đã chọn thư mục qua Web API: ${folderName}`
           ]);
         }
       } catch (err: any) {
-        console.error("Error choosing directory via Electron:", err);
-      }
-    } else if (typeof window !== "undefined" && "showDirectoryPicker" in window) {
-      // Modern Web File System Access API Fallback (Không cần gõ tay)
-      try {
-        const handle = await (window as any).showDirectoryPicker();
-        if (handle && handle.name) {
-          const webPath = `Downloads/${handle.name}`;
-          setOutputDir(webPath);
-          setTerminalLogs((prev) => [
-            ...prev,
-            `[config] 📁 Đã cấp quyền lưu vào thư mục: ${handle.name}`
-          ]);
+        if (err.name === "AbortError") {
+          // Người dùng chủ động đóng/hủy hộp thoại
+          return;
         }
-      } catch (err: any) {
-        // User cancelled picker
-        if (err.name !== "AbortError") {
-          console.warn("Directory picker error:", err);
-        }
+        console.warn("showDirectoryPicker fallback:", err);
       }
     } else {
-      // Fallback thông báo thân thiện
       setTerminalLogs((prev) => [
         ...prev,
-        `[info] 💡 Ứng dụng đang ở chế độ Web. Thư mục mặc định: ${outputDir}`
+        `[info] 💡 Trình duyệt không hỗ trợ showDirectoryPicker. Bạn có thể nhập trực tiếp đường dẫn bên dưới.`
       ]);
     }
   };
@@ -201,14 +203,23 @@ export const BatchDownloaderTool: React.FC = () => {
 
     setTerminalLogs((prev) => [
       ...prev,
-      `[scan] Đang phân tích cú pháp & bóc tách metadata cho ${links.length} URLs...`
+      `[scan] Đang phân tích cú pháp & bóc tách metadata cho ${links.length} URLs (Proxy: ${proxy || 'Direct'}, Cookie: ${cookie ? 'Đã nạp' : 'None'})...`
     ]);
+
+    abortControllerRef.current = new AbortController();
 
     try {
       const response = await fetch(getApiUrl("/api/download/scan"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ urls: links }),
+        signal: abortControllerRef.current.signal,
+        body: JSON.stringify({ 
+          urls: links,
+          cookie,
+          proxy,
+          highest_quality: highestQuality,
+          output_dir: outputDir || "downloads"
+        }),
       });
       if (!response.ok) throw new Error(`Server status ${response.status}`);
       const resData = await response.json();
@@ -221,93 +232,127 @@ export const BatchDownloaderTool: React.FC = () => {
         soundSynth.playSfx("pop");
       }
     } catch (error: any) {
-      console.error("Scan error:", error);
-      setTerminalLogs((prev) => [...prev, `[error] Lỗi quét: ${error.message}`]);
-      alert(`Lỗi quét Link: ${error.message || "Không thể kết nối đến server."}`);
+      if (error.name === "AbortError") {
+        setTerminalLogs((prev) => [...prev, "[stop] 🛑 Đã dừng tiến trình quét theo yêu cầu của bạn."]);
+      } else {
+        console.error("Scan error:", error);
+        setTerminalLogs((prev) => [...prev, `[error] Lỗi quét: ${error.message}`]);
+        alert(`Lỗi quét Link: ${error.message || "Không thể kết nối đến server."}`);
+      }
     } finally {
       setIsScanning(false);
+      abortControllerRef.current = null;
     }
+  };
+
+  const handleStopScanning = async () => {
+    soundSynth.playSfx("pop");
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsScanning(false);
+    setIsProcessing(false);
+    try {
+      await fetch(getApiUrl("/api/download/stop"), { method: "POST" });
+    } catch (_) {}
+    setTerminalLogs((prev) => [...prev, "[stop] 🛑 Đã dừng tiến trình quét / tải theo yêu cầu."]);
   };
 
   const handleDownloadAll = async () => {
     if (queue.length === 0) return;
     setIsProcessing(true);
     soundSynth.playSfx("cash");
+    const targetDir = outputDir || "downloads";
     setTerminalLogs((prev) => [
       ...prev,
-      `[launch] Bắt đầu tải hàng loạt ${queue.length} video (Độ phân giải: ${resolution}, Xóa Watermark: ${removeWatermark}, Lưu tại: ${outputDir})...`
+      `[launch] Bắt đầu tải hàng loạt ${queue.length} video (Chất lượng: ${highestQuality ? 'Cao nhất' : resolution}, Proxy: ${proxy}, Cookie: ${cookie ? 'Active' : 'None'}) -> Lưu tại: ${targetDir}...`
     ]);
 
-    const isElectron = typeof window !== "undefined" && (window as any).electronAPI;
-
-    if (isElectron) {
-      const electronAPI = (window as any).electronAPI;
-
-      electronAPI.onRenderLog((logMsg: string) => {
-        setTerminalLogs((prev) => [...prev, logMsg]);
+    try {
+      const response = await fetch(getApiUrl("/api/download/execute"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: queue,
+          resolution,
+          remove_watermark: removeWatermark,
+          output_dir: targetDir,
+          cookie,
+          proxy,
+          highest_quality: highestQuality
+        }),
       });
-
-      electronAPI.onRenderProgress((prog: number) => {
-        setOverallProgress(prog);
-      });
-
-      electronAPI.onRenderComplete(() => {
-        setIsProcessing(false);
-        setQueue((prev) => prev.map((q) => ({ ...q, status: "completed", progress: 100 })));
-        soundSynth.playSfx("success");
-        confetti({ particleCount: 60, spread: 80 });
-        electronAPI.removeRenderListeners();
-      });
-
-      electronAPI.renderVideo({
-        isBulkDownload: true,
-        items: queue,
-        resolution,
-        remove_watermark: removeWatermark,
-        output_dir: outputDir
-      });
-    } else {
-      try {
-        const response = await fetch(getApiUrl("/api/download/execute"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            items: queue,
-            resolution,
-            remove_watermark: removeWatermark,
-            output_dir: outputDir
-          }),
-        });
-        if (!response.ok) throw new Error(`Server returned status ${response.status}`);
-      } catch (error: any) {
-        console.error("Download error:", error);
-        setTerminalLogs((prev) => [...prev, `[error] Lỗi kết nối: ${error.message}`]);
-        alert(`Lỗi kết nối Server: ${error.message}`);
-        setIsProcessing(false);
-      }
+      if (!response.ok) throw new Error(`Server returned status ${response.status}`);
+    } catch (error: any) {
+      console.error("Download error:", error);
+      setTerminalLogs((prev) => [...prev, `[error] Lỗi kết nối: ${error.message}`]);
+      alert(`Lỗi kết nối Server: ${error.message}`);
+      setIsProcessing(false);
     }
   };
 
   const handleDownloadSingle = async (item: DownloadQueueItem) => {
     soundSynth.playSfx("pop");
+    const targetDir = outputDir || "downloads";
     setTerminalLogs((prev) => [
       ...prev,
-      `[download] Bắt đầu tải video [${item.videoId || item.id}] về thư mục: ${outputDir}...`
+      `[download] 🚀 Bắt đầu tải video [${item.videoId || item.id}] về thư mục: ${targetDir}...`
     ]);
 
+    // Cập nhật trạng thái item sang downloading
+    setQueue((prev) =>
+      prev.map((q) =>
+        q.id === item.id ? { ...q, status: "downloading", progress: 10 } : q
+      )
+    );
+
     try {
-      await fetch(getApiUrl("/api/download/execute"), {
+      const response = await fetch(getApiUrl("/api/download/execute"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           items: [item],
           resolution,
           remove_watermark: removeWatermark,
-          output_dir: outputDir
+          output_dir: targetDir,
+          cookie,
+          proxy,
+          highest_quality: highestQuality
         }),
       });
+      if (!response.ok) throw new Error(`Server returned status ${response.status}`);
     } catch (error: any) {
       console.error("Single download error:", error);
+      setTerminalLogs((prev) => [...prev, `[error] Lỗi tải lẻ: ${error.message}`]);
+    }
+  };
+
+  const handleDownloadAllZip = async () => {
+    soundSynth.playSfx("success");
+    try {
+      const res = await fetch(getApiUrl("/api/download/zip"));
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "CreatorOS_Batch_Export.zip";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        confetti({ particleCount: 70, spread: 90, origin: { y: 0.6 } });
+        setTerminalLogs((prev) => [
+          ...prev,
+          `[success] 📦 Đã tải tệp CreatorOS_Batch_Export.zip về máy tính thành công!`
+        ]);
+      } else {
+        alert("Không thể tải file ZIP từ server. Hãy bấm 'Bắt đầu xử lý' trước.");
+      }
+    } catch (err: any) {
+      console.error("ZIP download error:", err);
+      alert(`Lỗi tải file ZIP: ${err.message || err}`);
     }
   };
 
@@ -384,6 +429,78 @@ export const BatchDownloaderTool: React.FC = () => {
               className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs font-mono text-slate-100 focus:outline-none focus:border-cyan-500 resize-none leading-relaxed"
             />
 
+            {/* Advanced Downloader Configuration (Cookie, Proxy, Quality) */}
+            <div className="p-3.5 rounded-xl bg-slate-950/90 border border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                  Cấu Hình Nâng Cao (Bypass & Proxy)
+                </span>
+                <span className="text-[10px] text-cyan-400 font-mono">v5.0 Pro</span>
+              </div>
+
+              {/* Cookie Input */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-semibold text-slate-300 block">
+                  Nhập cookie Tiktok (Không bắt buộc)
+                </label>
+                <textarea
+                  rows={2}
+                  value={cookie}
+                  onChange={(e) => setCookie(e.target.value)}
+                  placeholder="Dán chuỗi Cookie từ extension Get cookies.txt (ví dụ: sessionid=...; ttwid=...)"
+                  className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-[11px] font-mono text-slate-200 focus:outline-none focus:border-cyan-500 resize-none leading-tight"
+                />
+              </div>
+
+              {/* Proxy Dropdown & Info Box */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold text-slate-300 block">
+                  Chọn proxy
+                </label>
+                <select
+                  value={proxy}
+                  onChange={(e) => setProxy(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 cursor-pointer"
+                >
+                  <option value="direct">Direct Connection (Không dùng proxy)</option>
+                  <option value="http://127.0.0.1:10809">Proxy Cục Bộ (HTTP 127.0.0.1:10809)</option>
+                  <option value="socks5://127.0.0.1:10808">Proxy Cục Bộ (SOCKS5 127.0.0.1:10808)</option>
+                  <option value="http://14.225.10.42:8080">Residential Proxy VN #01 (Clean 4G)</option>
+                  <option value="http://14.225.10.43:8080">Residential Proxy VN #02 (Clean 4G)</option>
+                  <option value="http://104.28.19.12:3128">US High-Speed Proxy (Bypass Geo-block)</option>
+                </select>
+
+                {/* Proxy Info Box */}
+                <div className="p-2.5 rounded-lg bg-cyan-950/40 border border-cyan-800/40 text-[11px] text-cyan-200/90 space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold text-cyan-300">
+                    <Globe className="w-3.5 h-3.5" />
+                    <span>Hướng Dẫn Sử Dụng Proxy & Cookie:</span>
+                  </div>
+                  <p className="text-[10px] text-slate-300 leading-relaxed">
+                    • <b>Cookie:</b> Giúp tải các video riêng tư, video giới hạn độ tuổi hoặc tránh captcha chặn IP.<br/>
+                    • <b>Proxy:</b> Đổi địa chỉ IP xoay vòng để cào hàng ngàn video liên tục mà không lo bị nền tảng TikTok/Douyin hạn chế băng thông.
+                  </p>
+                </div>
+              </div>
+
+              {/* Highest Quality Checkbox */}
+              <div
+                onClick={() => setHighestQuality(!highestQuality)}
+                className={`p-2.5 rounded-lg border text-xs font-semibold flex items-center justify-between cursor-pointer transition-all ${
+                  highestQuality
+                    ? "bg-cyan-500/20 text-cyan-200 border-cyan-500/40"
+                    : "bg-slate-900 text-slate-400 border-slate-700"
+                }`}
+              >
+                <span className="flex items-center gap-1.5">
+                  <Film className="w-3.5 h-3.5 text-cyan-400" />
+                  Tải xuống chất lượng cao nhất (Original 1080p/2K/4K)
+                </span>
+                <CheckCircle className={`w-4 h-4 ${highestQuality ? "text-cyan-400" : "text-slate-600"}`} />
+              </div>
+            </div>
+
             {/* Folder Selection Picker (Yêu cầu 1) */}
             <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1.5">
               <div className="flex items-center justify-between">
@@ -450,24 +567,37 @@ export const BatchDownloaderTool: React.FC = () => {
             </div>
           </div>
 
-          <button
-            id="btn-start-batch-download"
-            disabled={isScanning || isProcessing}
-            onClick={handleScanLinks}
-            className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-cyan-600 via-teal-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-bold text-sm shadow-lg shadow-cyan-600/30 flex items-center justify-center gap-2 transition-all disabled:opacity-50 mt-4 cursor-pointer"
-          >
-            {isScanning ? (
-              <>
-                <RefreshCw className="w-4 h-4 animate-spin" />
-                <span>Đang Quét & Giải Mã...</span>
-              </>
-            ) : (
-              <>
-                <Zap className="w-4 h-4" />
-                <span>1. Quét & Giải Mã Danh Sách Link</span>
-              </>
-            )}
-          </button>
+          {/* Cụm nút Bắt đầu quét & Dừng quét */}
+          <div className="grid grid-cols-2 gap-3 mt-4">
+            <button
+              id="btn-start-batch-download"
+              disabled={isScanning || isProcessing}
+              onClick={handleScanLinks}
+              className="py-3.5 px-4 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-bold text-xs shadow-lg shadow-red-600/30 flex items-center justify-center gap-2 transition-all disabled:opacity-50 cursor-pointer active:scale-95"
+            >
+              {isScanning ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Đang Quét...</span>
+                </>
+              ) : (
+                <>
+                  <Play className="w-4 h-4 fill-white" />
+                  <span>Bắt đầu quét</span>
+                </>
+              )}
+            </button>
+
+            <button
+              id="btn-stop-batch-download"
+              disabled={!isScanning && !isProcessing}
+              onClick={handleStopScanning}
+              className="py-3.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs border border-slate-700 flex items-center justify-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer active:scale-95"
+            >
+              <X className="w-4 h-4" />
+              <span>Dừng quét</span>
+            </button>
+          </div>
         </div>
 
         {/* Right: Task Queue & Table View */}
@@ -487,27 +617,38 @@ export const BatchDownloaderTool: React.FC = () => {
               <button
                 onClick={handleDownloadAll}
                 disabled={isProcessing || queue.length === 0}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold disabled:opacity-50 transition-all cursor-pointer shadow-md shadow-emerald-600/20 active:scale-95"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold disabled:opacity-50 transition-all cursor-pointer shadow-lg shadow-emerald-600/30 active:scale-95"
               >
                 {isProcessing ? (
                   <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <Loader2 className="w-4 h-4 animate-spin" />
                     <span>Đang Tải...</span>
                   </>
                 ) : (
                   <>
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Tải Toàn Bộ .MP4</span>
+                    <Zap className="w-4 h-4 text-amber-300" />
+                    <span>Bắt đầu xử lý nha</span>
                   </>
                 )}
               </button>
 
               <button
+                id="btn-download-zip"
+                onClick={handleDownloadAllZip}
+                disabled={queue.length === 0}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold shadow-md shadow-cyan-600/20 disabled:opacity-50 transition-all cursor-pointer active:scale-95"
+                title="Tải toàn bộ danh sách video thành 1 tệp .ZIP nén"
+              >
+                <FileArchive className="w-3.5 h-3.5" />
+                <span>Tải File ZIP</span>
+              </button>
+
+              <button
                 onClick={handleClearQueue}
-                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-700 cursor-pointer"
+                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-700 cursor-pointer transition-colors"
                 title="Xóa danh sách"
               >
-                <Trash2 className="w-3.5 h-3.5" />
+                <Trash2 className="w-4 h-4" />
               </button>
             </div>
           </div>
