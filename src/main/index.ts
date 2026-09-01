@@ -1,31 +1,47 @@
-// Proxy file to maintain backward compatibility while delegating to electron/electron.cjs
-require('./electron/electron.cjs');
+import { app, BrowserWindow, Menu, ipcMain, dialog } from 'electron';
+import path from 'path';
+import fs from 'fs-extra';
+import { spawn, ChildProcess } from 'child_process';
+import WebSocket from 'ws';
+import net from 'net';
 
-let mainWindow = null;
-let activePyProcess = null;
-let wsBridgeProcess = null;
-let wsClient = null;
-let wsConnected = false;
-let pendingRpcRequests = new Map();
+import { configureLogger, getLogger } from './services/logger';
+import setupIpcHandlers from './ipcHandlers';
+import databaseManager from './database';
+
+let mainWindow: BrowserWindow | null = null;
+let activePyProcess: ChildProcess | null = null;
+let wsBridgeProcess: ChildProcess | null = null;
+let wsClient: WebSocket | null = null;
+let wsConnected: boolean = false;
+
+interface PendingRpcRequest {
+  resolve: (value: any) => void;
+  reject: (reason?: any) => void;
+}
+
+const pendingRpcRequests = new Map<number, PendingRpcRequest>();
 let rpcRequestId = 1;
 
-// Thiết lập đường dẫn động an toàn tới appData/userData của người dùng
-function configureUserDataEnvironment() {
+/**
+ * Configure environment variables and app data storage directories dynamically
+ */
+function configureUserDataEnvironment(): void {
   try {
     const userDataPath = app.getPath('userData');
     const cacheDir = path.join(userDataPath, 'creatoros_cache');
     const dbPath = path.join(userDataPath, 'creatoros_state.db');
     const tempDir = path.join(userDataPath, 'temp');
 
-    if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
-    if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+    fs.ensureDirSync(cacheDir);
+    fs.ensureDirSync(tempDir);
 
     process.env.CREATOROS_USER_DATA = userDataPath;
     process.env.CREATOROS_CACHE_DIR = cacheDir;
     process.env.CREATOROS_DB_PATH = dbPath;
     process.env.CREATOROS_TEMP_DIR = tempDir;
 
-    // Nhúng đường dẫn chứa ffmpeg.exe, ffprobe.exe, yt-dlp.exe vào PATH
+    // Inject bin folder (ffmpeg.exe, ffprobe.exe, yt-dlp.exe) into system PATH
     const resourcesBinPath = path.join(process.resourcesPath || __dirname, 'bin');
     const localBinPath = path.join(__dirname, 'bin');
     const currentPath = process.env.PATH || '';
@@ -36,71 +52,120 @@ function configureUserDataEnvironment() {
       process.env.PATH = `${localBinPath}${path.delimiter}${currentPath}`;
     }
 
-    console.log('[Electron Config] ✅ UserData initialized:', userDataPath);
+    configureLogger(userDataPath);
+    getLogger().info('[Electron Config] ✅ UserData environment initialized:', userDataPath);
   } catch (err) {
-    console.error('[Electron Config] ❌ Lỗi khởi tạo UserData:', err);
+    console.error('[Electron Config] ❌ Error initializing UserData environment:', err);
   }
 }
 
-// Khởi động WebSocket Bridge (Python JSON-RPC 2.0 Server - Hỗ trợ cả Standalone .exe và Python script)
-function startPythonWsBridge() {
+// Register Node.js & Electron IPC Handlers
+setupIpcHandlers();
+
+/**
+ * Check if a port is in use
+ */
+async function isPortInUse(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once('error', (err: any) => {
+      if (err.code === 'EADDRINUSE') {
+        getLogger().info(`[Electron Main] Port ${port} is in use.`);
+        resolve(true);
+      } else {
+        resolve(false);
+      }
+    });
+    server.once('listening', () => {
+      server.close();
+      getLogger().info(`[Electron Main] Port ${port} is NOT in use.`);
+      resolve(false);
+    });
+    server.listen(port);
+  });
+}
+
+/**
+ * Launch Python WebSocket JSON-RPC Bridge Server
+ */
+async function startPythonWsBridge(): Promise<void> {
+  // Check if already running
+  if (await isPortInUse(8765)) {
+    getLogger().info('[Electron Main] Python WS Bridge already running on port 8765. Skipping launch.');
+    return;
+  }
+  
   try {
     const isWin = process.platform === 'win32';
+    // Dynamically find workspace root containing python_core folder
+    let projectRoot = path.resolve(__dirname);
+    while (projectRoot !== path.parse(projectRoot).root && !fs.existsSync(path.join(projectRoot, 'python_core'))) {
+      projectRoot = path.dirname(projectRoot);
+    }
+    if (!fs.existsSync(path.join(projectRoot, 'python_core'))) {
+      projectRoot = process.cwd();
+    }
+
     const packagedExePath = path.join(process.resourcesPath || __dirname, 'bin', isWin ? 'creatoros_core.exe' : 'creatoros_core');
     const altExePath = path.join(process.resourcesPath || __dirname, isWin ? 'creatoros_core.exe' : 'creatoros_core');
     const pythonCmd = isWin ? 'python' : 'python3';
 
     let spawnCmd = pythonCmd;
-    let spawnArgs = ['py_ws_bridge.py', '--port', '8765'];
+    const pyScriptPath = path.join(projectRoot, 'python_core', 'py_ws_bridge.py');
+    let spawnArgs = [pyScriptPath, '--port', '8765'];
 
     if (app.isPackaged && fs.existsSync(packagedExePath)) {
-      console.log(`[Electron Main] Khởi chạy Standalone Python Core binary: ${packagedExePath}`);
+      getLogger().info(`[Electron Main] Spawning Standalone Python Core binary: ${packagedExePath}`);
       spawnCmd = packagedExePath;
       spawnArgs = ['--port', '8765'];
     } else if (app.isPackaged && fs.existsSync(altExePath)) {
-      console.log(`[Electron Main] Khởi chạy Standalone Python Core binary: ${altExePath}`);
+      getLogger().info(`[Electron Main] Spawning Standalone Python Core binary: ${altExePath}`);
       spawnCmd = altExePath;
       spawnArgs = ['--port', '8765'];
     } else {
-      console.log(`[Electron Main] Khởi động Python WebSocket JSON-RPC Bridge từ mã nguồn: ${pythonCmd} py_ws_bridge.py`);
+      getLogger().info(`[Electron Main] Starting Python WS JSON-RPC Bridge from script: ${pythonCmd} ${pyScriptPath}`);
     }
 
     wsBridgeProcess = spawn(spawnCmd, spawnArgs, {
-      cwd: __dirname,
+      cwd: projectRoot,
       env: {
         ...process.env,
-        PYTHONUNBUFFERED: '1'
-      }
+        PYTHONUNBUFFERED: '1',
+        PYTHONPATH: `${path.join(projectRoot, 'python_core')}${path.delimiter}${path.join(projectRoot, 'python_core', 'engines')}${path.delimiter}${projectRoot}${path.delimiter}${process.env.PYTHONPATH || ''}`,
+      },
     });
 
-    wsBridgeProcess.stdout.on('data', (data) => {
-      console.log(`[PyWsBridge]: ${data.toString().trim()}`);
+    wsBridgeProcess.stdout?.on('data', (data: Buffer) => {
+      getLogger().info(`[PyWsBridge]: ${data.toString().trim()}`);
     });
 
-    wsBridgeProcess.stderr.on('data', (data) => {
-      console.error(`[PyWsBridge Error]: ${data.toString().trim()}`);
+    wsBridgeProcess.stderr?.on('data', (data: Buffer) => {
+      getLogger().error(`[PyWsBridge Error]: ${data.toString().trim()}`);
     });
 
-    wsBridgeProcess.on('close', (code) => {
-      console.log(`[PyWsBridge] exited with code ${code}`);
+    wsBridgeProcess.on('close', (code: number | null) => {
+      getLogger().info(`[PyWsBridge] Exited with status code ${code}`);
       wsBridgeProcess = null;
       wsConnected = false;
     });
 
-    // Kết nối WebSocket Client từ Electron Main sau 1s
+    // Initialize WebSocket Client connection after initial delay
     setTimeout(initWebSocketClient, 1000);
   } catch (err) {
-    console.error('[Electron Main] Lỗi khởi động py_ws_bridge.py:', err);
+    getLogger().error('[Electron Main] Error launching Python WS Bridge:', err);
   }
 }
 
+
 let wsReconnectAttempts = 0;
-let wsReconnectTimer = null;
+let wsReconnectTimer: NodeJS.Timeout | null = null;
 const INITIAL_BACKOFF_MS = 1000;
 const MAX_BACKOFF_MS = 20000;
 
-// Khởi tạo WebSocket Client kết nối đến Python Bridge với Exponential Backoff Auto-Reconnect
-function initWebSocketClient() {
+/**
+ * Initialize WebSocket Client with Exponential Backoff Auto-Reconnect
+ */
+function initWebSocketClient(): void {
   const wsUrl = 'ws://127.0.0.1:8765';
   if (wsReconnectTimer) {
     clearTimeout(wsReconnectTimer);
@@ -116,24 +181,29 @@ function initWebSocketClient() {
       wsClient = null;
     }
 
-    wsClient = new WebSocket(wsUrl);
+    wsClient = new WebSocket(wsUrl, {
+      perMessageDeflate: false,
+    });
 
     wsClient.on('open', () => {
       wsConnected = true;
       wsReconnectAttempts = 0;
-      console.log('[Electron WS] ✅ Đã kết nối WebSocket IPC Bridge hai chiều thành công!');
+      getLogger().info('[Electron WS] ✅ Connected to WebSocket IPC Bridge successfully!');
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('ws-bridge-status', { connected: true, url: wsUrl });
       }
+
+      // Send initial ping to establish session
+      sendJsonRpcRequest('system.ping', { client: 'Electron_Main' }).catch(() => {});
     });
 
-    wsClient.on('message', (rawData) => {
+    wsClient.on('message', (rawData: WebSocket.RawData) => {
       try {
         const message = JSON.parse(rawData.toString());
 
-        // 1. Xử lý phản hồi JSON-RPC Request (có id)
+        // 1. Handle JSON-RPC response matching request ID
         if (message.id && pendingRpcRequests.has(message.id)) {
-          const { resolve, reject } = pendingRpcRequests.get(message.id);
+          const { resolve, reject } = pendingRpcRequests.get(message.id)!;
           pendingRpcRequests.delete(message.id);
           if (message.error) {
             reject(new Error(message.error.message || 'RPC Error'));
@@ -143,15 +213,17 @@ function initWebSocketClient() {
           return;
         }
 
-        // 2. Xử lý Server-Initiated Notifications/Broadcasts
-        if (message.type && mainWindow && !mainWindow.isDestroyed()) {
-          const data = message.data;
-          switch (message.type) {
+        // 2. Handle Server-Initiated Notifications/Broadcasts (JSON-RPC 2.0 or legacy type)
+        const eventType = message.type || (message.method ? message.method.replace('notify.', '') : null);
+        const data = message.data || (message.params ? message.params.data || message.params : null);
+
+        if (eventType && mainWindow && !mainWindow.isDestroyed()) {
+          switch (eventType) {
             case 'render_log':
-              mainWindow.webContents.send('render-log', typeof data === 'string' ? data : `[${data.stage || 'LOG'}] ${data.message || ''}`);
+              mainWindow.webContents.send('render-log', typeof data === 'string' ? data : `[${data?.stage || 'LOG'}] ${data?.message || ''}`);
               break;
             case 'render_progress':
-              mainWindow.webContents.send('render-progress', typeof data === 'number' ? data : (data.progress_percent || 0));
+              mainWindow.webContents.send('render-progress', typeof data === 'number' ? data : data?.progress_percent || 0);
               break;
             case 'stage_completed':
             case 'render_stage_update':
@@ -170,35 +242,38 @@ function initWebSocketClient() {
             case 'qc_report':
               mainWindow.webContents.send('qc-report', data);
               break;
+            case 'bridge_ready':
+              getLogger().info('[Electron WS] Python Core Bridge Ready:', data);
+              break;
             default:
               break;
           }
         }
       } catch (err) {
-        console.error('[Electron WS] Lỗi giải mã message WebSocket:', err);
+        getLogger().error('[Electron WS] Failed to parse WebSocket message:', err);
       }
     });
 
-    wsClient.on('error', (err) => {
+    wsClient.on('error', (err: Error) => {
       const errMsg = err ? (err.message || String(err)) : 'Unknown error';
-      console.error(`[Electron WS] ❌ WebSocket client error: ${errMsg}`);
+      getLogger().error(`[Electron WS] ❌ WebSocket client error: ${errMsg}`);
       wsConnected = false;
     });
 
-    wsClient.on('close', (code, reason) => {
+    wsClient.on('close', (code: number, reason: Buffer) => {
       wsConnected = false;
       const reasonStr = (reason && reason.length > 0) ? reason.toString() : 'No reason provided';
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('ws-bridge-status', { connected: false, url: wsUrl });
       }
-      
-      // Auto-Reconnect with Exponential Backoff
+
+      // Reconnect with Exponential Backoff
       wsReconnectAttempts += 1;
       const delayMs = Math.min(
         INITIAL_BACKOFF_MS * Math.pow(1.5, wsReconnectAttempts - 1) + Math.random() * 300,
         MAX_BACKOFF_MS
       );
-      console.warn(`[Electron WS] ⚠️ Kết nối WS ngắt (Code: ${code}, Reason: "${reasonStr}"), thử kết nối lại lần ${wsReconnectAttempts} sau ${(delayMs/1000).toFixed(1)}s...`);
+      getLogger().warn(`[Electron WS] ⚠️ Connection dropped (Code: ${code}, Reason: "${reasonStr}"). Attempting reconnect #${wsReconnectAttempts} in ${(delayMs / 1000).toFixed(1)}s...`);
       wsReconnectTimer = setTimeout(initWebSocketClient, delayMs);
     });
   } catch (err) {
@@ -212,12 +287,13 @@ function initWebSocketClient() {
   }
 }
 
-// Gửi RPC request qua WebSocket
-function sendJsonRpcRequest(method, params = {}) {
+/**
+ * Dispatch JSON-RPC 2.0 Request over WebSocket
+ */
+function sendJsonRpcRequest<T = any>(method: string, params: Record<string, any> = {}): Promise<T> {
   return new Promise((resolve, reject) => {
     if (!wsClient || wsClient.readyState !== WebSocket.OPEN) {
-      // Fallback nếu WebSocket chưa sẵn sàng
-      return resolve({ success: true, fallback: true, method, params });
+      return resolve({ success: true, fallback: true, method, params } as unknown as T);
     }
 
     const id = rpcRequestId++;
@@ -225,12 +301,12 @@ function sendJsonRpcRequest(method, params = {}) {
       jsonrpc: '2.0',
       method,
       params,
-      id
+      id,
     };
 
     pendingRpcRequests.set(id, { resolve, reject });
 
-    // Timeout sau 15s nếu không có phản hồi
+    // Reject on 15s timeout
     setTimeout(() => {
       if (pendingRpcRequests.has(id)) {
         pendingRpcRequests.delete(id);
@@ -242,39 +318,45 @@ function sendJsonRpcRequest(method, params = {}) {
   });
 }
 
-function createWindow() {
+/**
+ * Create primary Electron Browser Window
+ */
+function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
     minWidth: 1024,
     minHeight: 720,
-    title: "CreatorOS Desktop - Local AI Studio Suite",
+    title: 'CreatorOS Desktop - Local AI Studio Suite',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: false,
-      preload: path.join(__dirname, 'preload.cjs')
+      preload: path.join(__dirname, '../../electron/preload.cjs'),
     },
-    backgroundColor: '#090d16'
+    backgroundColor: '#090d16',
   });
 
   Menu.setApplicationMenu(null);
 
   const devUrl = process.env.VITE_DEV_SERVER_URL || process.env.ELECTRON_START_URL;
   if (devUrl) {
-    console.log(`[Electron Main] Loading Dev Server URL: ${devUrl}`);
+    getLogger().info(`[Electron Main] Loading Dev Server URL: ${devUrl}`);
     mainWindow.loadURL(devUrl).catch((err) => {
-      console.error("[Electron Main] Failed to load Dev Server URL:", err);
+      getLogger().error('[Electron Main] Failed to load Dev Server URL:', err);
     });
   } else {
     // Native Desktop Mode: Load static Vite dist bundle directly without Web Server
-    let indexPath = path.join(__dirname, 'dist', 'index.html');
+    let indexPath = path.join(__dirname, '..', 'dist', 'index.html');
     if (!fs.existsSync(indexPath)) {
-      indexPath = path.join(__dirname, '..', 'dist', 'index.html');
+      indexPath = path.join(__dirname, 'dist', 'index.html');
     }
-    console.log(`[Electron Main] Loading Native Desktop UI Bundle from: ${indexPath}`);
+    if (!fs.existsSync(indexPath)) {
+      indexPath = path.join(process.resourcesPath || __dirname, 'dist', 'index.html');
+    }
+    getLogger().info(`[Electron Main] Loading Native Desktop UI Bundle from: ${indexPath}`);
     mainWindow.loadFile(indexPath).catch((err) => {
-      console.error("[Electron Main] Failed to load local dist/index.html file:", err);
+      getLogger().error('[Electron Main] Failed to load local dist/index.html file:', err);
     });
   }
 
@@ -283,8 +365,15 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   configureUserDataEnvironment();
+
+  // Initialize SQLite Database Manager cleanly inside UserData
+  try {
+    await databaseManager.initDatabase();
+  } catch (dbErr) {
+    getLogger().error('[Electron Main] ❌ Database Manager initialization error:', dbErr);
+  }
 
   // Start native Python WS IPC Bridge (Port 8765)
   startPythonWsBridge();
@@ -297,66 +386,75 @@ app.whenReady().then(() => {
   });
 });
 
-app.on('window-all-closed', () => {
+app.on('window-all-closed', async () => {
   if (wsClient) {
-    try { wsClient.close(); } catch (e) {}
+    try {
+      wsClient.close();
+    } catch (e) {}
   }
   if (wsBridgeProcess) {
-    try { wsBridgeProcess.kill(); } catch (e) {}
+    try {
+      wsBridgeProcess.kill();
+    } catch (e) {}
   }
+
+  // Safe closing of SQLite database connection
+  try {
+    await databaseManager.closeDatabase();
+  } catch (e) {}
+
   if (process.platform !== 'darwin') {
     app.quit();
   }
 });
 
-// Native Directory / File Dialog Handler
-ipcMain.handle('select-directory-dialog', async (event, defaultPath) => {
+// Directory Dialog Handler
+ipcMain.handle('select-directory-dialog', async (_event, defaultPath: string) => {
   try {
-    const startPath = defaultPath && fs.existsSync(defaultPath) 
-      ? defaultPath 
-      : app.getPath('downloads');
+    const startPath = defaultPath && fs.existsSync(defaultPath) ? defaultPath : app.getPath('downloads');
+
+    if (!mainWindow) {
+      return { success: false, error: 'Main window instance not found' };
+    }
 
     const result = await dialog.showOpenDialog(mainWindow, {
       title: 'Chọn thư mục lưu trữ video MP4',
       defaultPath: startPath,
-      properties: ['openDirectory', 'createDirectory']
+      properties: ['openDirectory', 'createDirectory'],
     });
-    
+
     if (!result.canceled && result.filePaths && result.filePaths.length > 0) {
       const selectedPath = path.normalize(result.filePaths[0]);
-      console.log('[Electron Dialog] ✅ Thư mục được người dùng chọn:', selectedPath);
+      getLogger().info('[Electron Dialog] ✅ User selected directory:', selectedPath);
       return { success: true, dirPath: selectedPath };
     }
     return { success: false, canceled: true };
-  } catch (err) {
-    console.error('Error selecting directory:', err);
+  } catch (err: any) {
+    getLogger().error('Error selecting directory:', err);
     return { success: false, error: err.message };
   }
 });
 
-// JSON-RPC 2.0 Invoke Handler (Direct WebSocket IPC)
-ipcMain.handle('json-rpc-invoke', async (event, { method, params }) => {
-  console.log(`[JSON-RPC Invoke via WS] Method: ${method}`);
+// Direct JSON-RPC Invoke Handler
+ipcMain.handle('json-rpc-invoke', async (_event, { method, params }: { method: string; params: Record<string, any> }) => {
+  getLogger().info(`[JSON-RPC Invoke via WS] Method: ${method}`);
   try {
     const result = await sendJsonRpcRequest(method, params || {});
     return result;
-  } catch (err) {
-    console.error(`[JSON-RPC Invoke Error] ${method}:`, err);
+  } catch (err: any) {
+    getLogger().error(`[JSON-RPC Invoke Error] ${method}:`, err);
     return { error: err.message };
   }
 });
 
-// Legacy / Direct Python Process Handler
-ipcMain.on('render-video', (event, config) => {
-  console.log('Received render-video request with config:', config);
-  
+// Legacy Python Process Renderer Invoker
+ipcMain.on('render-video', (event, config: Record<string, any>) => {
+  getLogger().info('Received render-video request with config:', config);
+
   if (activePyProcess) {
     try {
-      console.log('Killing previous active process before spawning new one...');
       activePyProcess.kill();
-    } catch (e) {
-      console.error('Error killing previous active process:', e);
-    }
+    } catch (e) {}
   }
 
   let scriptName = 'video_render.py';
@@ -399,8 +497,8 @@ ipcMain.on('render-video', (event, config) => {
     if (config.proxy) {
       args.push('--proxy', config.proxy);
     }
-    if (config.highest_quality !== undefined) {
-      if (config.highest_quality) args.push('--highest_quality');
+    if (config.highest_quality !== undefined && config.highest_quality) {
+      args.push('--highest_quality');
     }
     if (config.remove_watermark) {
       args.push('--no_watermark');
@@ -422,18 +520,18 @@ ipcMain.on('render-video', (event, config) => {
   }
 
   const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
-  console.log(`Spawning python process: ${pythonCmd} ${args.join(' ')}`);
-  
+  getLogger().info(`Spawning python process: ${pythonCmd} ${args.join(' ')}`);
+
   const pyProcess = spawn(pythonCmd, args, { cwd: __dirname });
   activePyProcess = pyProcess;
 
-  pyProcess.stdout.on('data', (data) => {
+  pyProcess.stdout?.on('data', (data: Buffer) => {
     const output = data.toString().trim();
     const lines = output.split('\n');
     for (const line of lines) {
       const trimmedLine = line.trim();
       if (!trimmedLine) continue;
-      
+
       if (trimmedLine.startsWith('{') && trimmedLine.endsWith('}')) {
         try {
           const stageUpdate = JSON.parse(trimmedLine);
@@ -447,7 +545,7 @@ ipcMain.on('render-video', (event, config) => {
           }
         } catch (e) {}
       }
-      
+
       const progressMatch = trimmedLine.match(/\[progress\]\s+(\d+)/);
       if (progressMatch) {
         event.reply('render-progress', parseInt(progressMatch[1], 10));
@@ -457,7 +555,7 @@ ipcMain.on('render-video', (event, config) => {
     }
   });
 
-  pyProcess.stderr.on('data', (data) => {
+  pyProcess.stderr?.on('data', (data: Buffer) => {
     const lines = data.toString().trim().split('\n');
     for (const line of lines) {
       if (line.trim()) {
@@ -466,7 +564,7 @@ ipcMain.on('render-video', (event, config) => {
     }
   });
 
-  pyProcess.on('close', (code) => {
+  pyProcess.on('close', (code: number | null) => {
     if (activePyProcess === pyProcess) activePyProcess = null;
     if (code === 0) {
       event.reply('render-complete', { success: true });
@@ -475,7 +573,7 @@ ipcMain.on('render-video', (event, config) => {
     }
   });
 
-  pyProcess.on('error', (err) => {
+  pyProcess.on('error', (err: Error) => {
     if (activePyProcess === pyProcess) activePyProcess = null;
     event.reply('render-error', `Failed to start Python process: ${err.message}`);
   });
@@ -485,16 +583,16 @@ ipcMain.on('cancel-render', (event) => {
   if (activePyProcess) {
     try {
       activePyProcess.kill('SIGTERM');
-      event.reply('render-log', '[system] Đã gửi lệnh hủy tiến trình render.');
-    } catch (e) {
-      event.reply('render-error', `Lỗi dừng tiến trình: ${e.message}`);
+      event.reply('render-log', '[system] Sent cancel signal to render process.');
+    } catch (e: any) {
+      event.reply('render-error', `Process kill error: ${e.message}`);
     }
   }
 });
 
 // Master DAG Pipeline Orchestrator Handlers
-ipcMain.on('orchestrator-start', (event, config = {}) => {
-  console.log('[Orchestrator IPC] Starting Master DAG pipeline:', config);
+ipcMain.on('orchestrator-start', (event, config: Record<string, any> = {}) => {
+  getLogger().info('[Orchestrator IPC] Starting Master DAG pipeline:', config);
 
   if (activePyProcess) {
     try {
@@ -507,12 +605,7 @@ ipcMain.on('orchestrator-start', (event, config = {}) => {
   const title = config.title || 'Tự Động Hóa Chuỗi Triệu View';
   const priority = config.priority || 'HIGH';
 
-  const args = [
-    'orchestrator_engine.py',
-    '--id', pipelineId,
-    '--title', title,
-    '--priority', priority
-  ];
+  const args = ['orchestrator_engine.py', '--id', pipelineId, '--title', title, '--priority', priority];
 
   if (config.resume) {
     args.push('--resume');
@@ -521,7 +614,7 @@ ipcMain.on('orchestrator-start', (event, config = {}) => {
   const pyProcess = spawn(pythonCmd, args, { cwd: __dirname });
   activePyProcess = pyProcess;
 
-  pyProcess.stdout.on('data', (data) => {
+  pyProcess.stdout?.on('data', (data: Buffer) => {
     const lines = data.toString().trim().split('\n');
     for (const line of lines) {
       const trimmed = line.trim();
@@ -542,27 +635,27 @@ ipcMain.on('orchestrator-start', (event, config = {}) => {
     }
   });
 
-  pyProcess.stderr.on('data', (data) => {
+  pyProcess.stderr?.on('data', (data: Buffer) => {
     console.error(`[Orchestrator Stderr]: ${data.toString()}`);
   });
 
-  pyProcess.on('close', (code) => {
+  pyProcess.on('close', (code: number | null) => {
     if (activePyProcess === pyProcess) activePyProcess = null;
     if (code === 0) {
-      event.reply('render-log', '✅ Unified Master DAG Pipeline hoàn tất 100%!');
+      event.reply('render-log', '✅ Unified Master DAG Pipeline complete 100%!');
     }
   });
 });
 
-ipcMain.on('orchestrator-resume', (event, { pipelineId }) => {
-  console.log('[Orchestrator IPC] Resuming checkpoint for pipeline:', pipelineId);
+ipcMain.on('orchestrator-resume', (event, { pipelineId }: { pipelineId: string }) => {
+  getLogger().info('[Orchestrator IPC] Resuming checkpoint for pipeline:', pipelineId);
   const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
   const args = ['orchestrator_engine.py', '--id', pipelineId, '--resume'];
 
   const pyProcess = spawn(pythonCmd, args, { cwd: __dirname });
   activePyProcess = pyProcess;
 
-  pyProcess.stdout.on('data', (data) => {
+  pyProcess.stdout?.on('data', (data: Buffer) => {
     const lines = data.toString().trim().split('\n');
     for (const line of lines) {
       const trimmed = line.trim();
@@ -572,35 +665,36 @@ ipcMain.on('orchestrator-resume', (event, { pipelineId }) => {
 });
 
 ipcMain.on('nvme-cache-clean', (event) => {
-  console.log('[Orchestrator IPC] Cleaning NVMe temp cache...');
+  getLogger().info('[Orchestrator IPC] Cleaning NVMe temp cache...');
   sendJsonRpcRequest('governor.clean_cache', { keep_checkpoints: true })
-    .then((res) => {
-      event.reply('render-log', `[nvme] Đã dọn dẹp ${res.freed_mb || 0} MB bộ nhớ cache.`);
+    .then((res: any) => {
+      event.reply('render-log', `[nvme] Freed ${res.freed_mb || 0} MB of cache memory.`);
     })
-    .catch((err) => {
-      event.reply('render-log', `[nvme] Lỗi dọn cache: ${err.message}`);
+    .catch((err: any) => {
+      event.reply('render-log', `[nvme] Cache clean error: ${err.message}`);
     });
 });
 
 ipcMain.on('vram-cache-empty', (event) => {
-  console.log('[Orchestrator IPC] Emptying VRAM & RAM garbage...');
+  getLogger().info('[Orchestrator IPC] Emptying VRAM & RAM garbage...');
   sendJsonRpcRequest('governor.empty_vram', {})
     .then(() => {
-      event.reply('render-log', '[governor] 🧹 Đã kích hoạt giải phóng VRAM (torch.cuda.empty_cache) thành công!');
+      event.reply('render-log', '[governor] 🧹 Triggered VRAM release (torch.cuda.empty_cache) successfully!');
     })
     .catch(() => {
-      event.reply('render-log', '[governor] 🧹 Đã kích hoạt giải phóng VRAM & RAM cache tức thì!');
+      event.reply('render-log', '[governor] 🧹 Triggered VRAM & RAM cache cleanup!');
     });
 });
 
-ipcMain.on('qc-validate', (event, payload) => {
-  console.log('[QC Agent IPC] Evaluating highlights payload:', payload);
+ipcMain.on('qc-validate', (event, payload: Record<string, any>) => {
+  getLogger().info('[QC Agent IPC] Evaluating highlights payload:', payload);
   sendJsonRpcRequest('qc.validate', payload)
-    .then((report) => {
+    .then((report: any) => {
       event.reply('qc-report', report);
-      event.reply('render-log', `[qc_agent] ✅ Đã hoàn tất đánh giá QC: Điểm ${report.qc_score || 95}/100 (${report.status || 'APPROVED'})`);
+      event.reply('render-log', `[qc_agent] ✅ QC evaluation completed: Score ${report.qc_score || 95}/100 (${report.status || 'APPROVED'})`);
     })
     .catch(() => {
-      event.reply('render-log', '[qc_agent] 🔍 Đang kiểm duyệt tính liên kết mạch truyện & chống bản quyền...');
+      event.reply('render-log', '[qc_agent] 🔍 Validating narrative continuity & anti-copyright measures...');
     });
 });
+

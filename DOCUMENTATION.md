@@ -1,105 +1,133 @@
-# 📘 TÀI LIỆU KỸ THUẬT & ĐẶC TẢ KIẾN TRÚC HỆ THỐNG CREATOROS v5.0
+# 📘 TÀI LIỆU KỸ THUẬT & ĐẶC TẢ KIẾN TRÚC HỆ THỐNG CREATOROS v5.1
 ### CREATOROS Commercial Enterprise Video Workstation - Comprehensive Architecture & Technical Reference Manual
 
 ---
 
 ## 📑 MỤC LỤC
-1. [Tổng Quan Kiến Trúc Đa Tầng Tự Trị (4-Tier Autonomous Architecture)](#1-tổng-quan-kiến-trúc-đa-tầng-tự-trị)
-2. [Giao Thức WebSocket JSON-RPC 2.0 & Cơ Chế Auto-Reconnect (IPC Bridge)](#2-giao-thức-websocket-json-rpc-20--cơ-chế-auto-reconnect)
-3. [Lược Đồ Cơ Sở Dữ Liệu SQLite WAL & Checkpoint ACID](#3-lược-đồ-cơ-sở-dữ-liệu-sqlite-wal--checkpoint-acid)
-4. [Bộ Điều Phối Phần Cứng VRAM/RAM & Giám Sát NVMe (Hardware Governor)](#4-bộ-điều-phối-phần-cứng-vramram--giám-sát-nvme)
-5. [Visual Workflow Builder, Local LLM Copilot & DAG Topological Sort](#5-visual-workflow-builder-local-llm-copilot--dag-topological-sort)
-6. [Hệ Thống Phân Tán Cụm Mạng LAN (Master-Worker Rendering Engine)](#6-hệ-thống-phân-tán-cụm-mạng-lan-master-worker-rendering-engine)
-7. [Local AI Lip-Sync Studio (ONNX / TensorRT / Wav2Lip)](#7-local-ai-lip-sync-studio-onnx--tensorrt--wav2lip)
-8. [Hệ Thống DRM Bản Quyền Ngoại Tuyến & Hardware Fingerprinting](#8-hệ-thống-drm-bản-quyền-ngoại-tuyến--hardware-fingerprinting)
-9. [Cơ Chế Tự Phục Hồi Lỗi (Agentic Self-Healing) & Danh Mục Mã Lỗi Toàn Cục](#9-cơ-chế-tự-phục-hồi-lỗi-agentic-self-healing--danh-mục-mã-lỗi-toàn-cục)
-10. [Bảo Mật & Cập Nhật Tự Động An Toàn OTA (Secure Chunked Updater)](#10-bảo-mật--cập-nhật-tự-động-an-toàn-ota)
-11. [Danh Mục REST API & WebSocket Realtime Catalog](#11-danh-mục-rest-api--websocket-realtime-catalog)
-12. [Quy Trình DevOps, Build & Đóng Gói Windows Standalone](#12-quy-trình-devops-build--đóng-gói-windows-standalone)
+1. [Tổng Quan Kiến Trúc Đa Tầng Desktop (Enterprise Native Desktop Architecture)](#1-tổng-quan-kiến-trúc-đa-tầng-desktop)
+2. [Chi Tiết Phân Tầng Hệ Thống & Separation of Concerns](#2-chi-tiết-phân-tầng-hệ-thống--separation-of-concerns)
+3. [Giao Thức IPC, JSON-RPC 2.0 & WebSocket Bridge](#3-giao-thức-ipc-json-rpc-20--websocket-bridge)
+4. [Tầng Quản Lý Dịch Vụ Core (Services & Queue Manager)](#4-tầng-quản-lý-dịch-vụ-core-services--queue-manager)
+5. [Tầng Xử Lý Phần Cứng & FFmpeg GPU Worker](#5-tầng-xử-lý-phần-cứng--ffmpeg-gpu-worker)
+6. [Hệ Thống Bản Quyền Ngoại Tuyến & Hardware Fingerprinting](#6-hệ-thống-bản-quyền-ngoại-tuyến--hardware-fingerprinting)
+7. [Bảo Mật, Clean Code & Quy Trình Build Windows (.exe)](#7-bảo-mật-clean-code--quy-trình-build-windows-exe)
 
 ---
 
-## 1. TỔNG QUAN KIẾN TRÚC ĐA TẦNG TỰ TRỊ
+## 1. TỔNG QUAN KIẾN TRÚC ĐA TẦNG DESKTOP
 
-CREATOROS Desktop v5.0 được xây dựng dựa trên kiến trúc **4 Tầng Tự Trị Phân Tán (4-Tier Autonomous Architecture)**, tối ưu hoá chuyên sâu cho môi trường Windows 10/11 x64 với cấu hình GPU tầm trung (NVIDIA GTX 1660 Super 6GB GDDR6 VRAM, RAM 16GB, ổ NVMe SSD):
+CREATOROS Desktop v5.1 được thiết kế dựa trên kiến trúc **Desktop-First Multi-processing (5-Tier Enterprise Architecture)**, phân tách tường minh trách nhiệm giữa UI, Node.js Main Process, Services Engine, Queue Worker và Phần cứng GPU:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                            TẦNG 1: TRÌNH DIỄN (UI LAYER)                    │
-│   • React 18 SPA (Vite, TypeScript, Tailwind CSS, Lucide Icons)             │
-│   • Visual Workflow Builder Canvas (Interactive DAG Nodes & SVG Wire Edges) │
-│   • License Activation Modal, Database Explorer & Terminal Log Streamer     │
-│   • Blueprint & Preset Manager (.creatoros Package System)                  │
+│                            TẦNG 1: UI RENDERER (React SPA)                  │
+│   • React 18, Vite, TypeScript, Tailwind CSS                                │
+│   • Tuyệt đối không gọi trực tiếp File System hoặc tiến trình nặng           │
+│   • Gửi yêu cầu qua window.electronAPI.invoke(...) & window.api             │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │ ContextBridge / Preload IPC
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       TẦNG 2: ELECTRON MAIN PROCESS (Node.js)               │
+│   • Entry point src/main/index.ts & electron/electron.cjs                   │
+│   • Task Dispatcher & Specialized Handlers (src/main/workers/)             │
+│   • SQLite Database Manager (src/main/database.ts - WAL Mode)               │
+│   • Đăng ký các handler an toàn tại src/main/ipcHandlers.ts                 │
+│   • Nạp biến môi trường động AppData (process.env.CREATOROS_USER_DATA)      │
 └──────────────────────────────────────┬──────────────────────────────────────┘
                                        │
-                                       ▼ IPC (Context Isolation / Preload Script)
+                  ┌────────────────────┴────────────────────┐
+                  ▼                                         ▼
+┌───────────────────────────────────────┐ ┌───────────────────────────────────┐
+│ TẦNG 3: TASK DISPATCHER & HANDLERS    │ │ TẦNG 4: PYTHON JSON-RPC BRIDGE    │
+│ • downloadHandler (Tải video)         │ │ • py_ws_bridge.py / Standalone    │
+│ • dubbingHandler (Gemini & TTS)       │ │ • WebSocket TCP (ws://127.0.0.1) │
+│ • renderHandler (FFmpeg CUDA Render)  │ │ • Exponential Backoff Reconnect   │
+│ • KeyPool Service (Round-Robin 429)   │ │ • State Checkpoint Manager        │
+└──────────────────┬────────────────────┘ └─────────────────┬─────────────────┘
+                   │                                        │
+                   └────────────────────┬───────────────────┘
+                                        ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                        TẦNG 2: ĐIỀU PHỐI (ELECTRON MAIN / IPC)              │
-│   • Node.js Backend Server (Express, Socket.IO, Sequelize / SQLite Pool)    │
-│   • Electron Main Process (Quản lý BrowserWindow, UserData động, PATH Bin)  │
-│   • Exponential Backoff Auto-Reconnect WS Client & Child Process Lifecycle  │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       │
-                                       ▼ WebSocket TCP (ws://127.0.0.1:8765)
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                   TẦNG 3: MÁY CHỦ PYTHON CORE & JSON-RPC BRIDGE             │
-│   • JSON-RPC 2.0 Server nội bộ (py_ws_bridge.py / creatoros_core.exe)       │
-│   • Hardware Governor (Giám sát VRAM, RAM, CPU, Throttle NVENC)             │
-│   • DAG Workflow Compiler (Kahn's Topo Sort & Cycle Rejection)              │
-│   • State Manager & SQLite WAL Engine (Pipelines, Stages, Checkpoint Hash)  │
-│   • Local LLM Intent Parser, Local Vector RAG & AI QC Agent                 │
-│   • Agentic Self-Healing Doctor (Chẩn đoán lỗi FFmpeg / CUDA & Auto-Retry)  │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       │
-                                       ▼ Binary Exec / Hardware NVENC / CUDA
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                    TẦNG 4: THỰC THI PHẦN CỨNG & MULTIMEDIA                  │
-│   • FFmpeg Turing NVENC (H.264/HEVC Hardware Acceleration)                  │
-│   • PyTorch / Demucs (Stem Audio Separation với GPU Memory Isolation)       │
-│   • ONNX Runtime / TensorRT (Local Wav2Lip High-Performance Lip-Sync)       │
-│   • Edge-TTS & Pydub (Neural Voice Synthesis & Auto-Ducking Sidechain)      │
-│   • ADB Subsystem (Phone Farm Matrix Device Controller)                     │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-│   • Visual Workflow Builder Canvas (Interactive Nodes & Topological Graph)  │
-│   • License Activation Center & OTA Update Modal Controller                 │
-│   • Blueprint & Preset Explorer (.creatoros Package Manager)                │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       │
-                                       ▼ IPC (Context Isolation / Preload)
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                        TẦNG 2: ĐIỀU PHỐI (ELECTRON MAIN / IPC)              │
-│   • Node.js Backend Server (Express, Socket.IO, SQLite Pool)                │
-│   • Quản lý cửa sổ BrowserWindow, nạp biến môi trường UserData động         │
-│   • Quản lý vòng đời tiến trình con và chuyển tiếp WebSocket IPC            │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       │
-                                       ▼ WebSocket TCP (ws://127.0.0.1:8765)
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                   TẦNG 3: MÁY CHỦ PYTHON CORE & JSON-RPC BRIDGE             │
-│   • JSON-RPC 2.0 Server nội bộ (py_ws_bridge.py / creatoros_core.exe)       │
-│   • DRM & Hardware Fingerprint Engine (Offline HMAC-SHA256 Licensing)       │
-│   • DAG Workflow Compiler & Topological Execution Engine                    │
-│   • State Manager & SQLite WAL Engine (Presets, Tasks, Checkpoints)         │
-│   • Secure OTA Updater Engine (Chunked Download & Hash Verification)        │
-│   • Hardware Governor & Local Vector RAG + AI QC Agent                      │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       │
-                                       ▼ Binary Exec / Hardware NVENC / CUDA
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                    TẦNG 4: THỰC THI PHẦN CỨNG & MULTIMEDIA                  │
-│   • FFmpeg NVENC (H.264/HEVC Hardware Acceleration với Turing NVENC)        │
-│   • PyTorch / Demucs (Stem Audio Separation với GPU Memory Isolation)       │
-│   • Edge-TTS & Pydub (Neural Voice Synthesis & Auto-Ducking)                │
-│   • ADB Subsystem (Phone Farm Matrix Device Controller)                     │
+│                    TẦNG 5: HARDWARE & FFMPEG NVENC WORKER                   │
+│   • VideoWorker (FFmpeg CLI via child_process)                              │
+│   • NVIDIA GPU CUDA Acceleration (-hwaccel cuda, h264_nvenc)                │
+│   • Automatic CPU Fallback Resilience (Libx264 auto retry on failure)       │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 2. HỆ THỐNG QUẢN LÝ BẢN QUYỀN NGOẠI TUYẾN & HARDWARE FINGERPRINTING
+## 2. CHI TIẾT PHÂN TẦNG HỆ THỐNG & SEPARATION OF CONCERNS
 
-Hệ thống DRM trong CREATOROS (`hardware_fingerprint.py`) được thiết kế để kích hoạt và xác thực bản quyền vĩnh viễn hoặc theo kỳ **100% Offline**, không phụ thuộc vào máy chủ cấp phép từ xa.
+### 2.1. Separation of Concerns (Tách biệt trách nhiệm)
+1. **UI Layer (Renderer Process)**:
+   - Nằm tại `src/renderer/`. Chỉ đảm nhận trách nhiệm render giao diện, tiếp nhận thao tác người dùng và hiển thị log real-time.
+   - Không chứa bất kỳ câu lệnh IO trực tiếp hoặc gọi module hệ thống `fs`, `child_process`.
+2. **Main Process Layer**:
+   - Nằm tại `src/main/index.ts` và `src/main/ipcHandlers.ts`.
+   - Đảm nhận việc mở cửa sổ `BrowserWindow`, cấu hình thư mục hệ thống `AppData`, và định tuyến các yêu cầu IPC.
+3. **Services Layer**:
+   - Nằm tại `src/main/services/`. Bao gồm các class dịch vụ nghiệp vụ viết bằng TypeScript strict:
+     - [src/main/services/keyPool.ts](src/main/services/keyPool.ts): Quản lý danh sách Gemini API Key với cơ chế Cooldown tự động 60s khi bị quá tải (`429`).
+     - [src/main/services/scraper.ts](src/main/services/scraper.ts): Quét thông tin video từ TikTok/Douyin.
+     - [src/main/services/downloaderService.ts](src/main/services/downloaderService.ts): Tải video song song với cơ chế Retry.
+     - [src/main/services/dubbingService.ts](src/main/services/dubbingService.ts): Dịch thuật kịch bản qua Gemini và tổng hợp audio lồng tiếng.
+     - [src/main/services/queueManager.ts](src/main/services/queueManager.ts): Hàng đợi xử lý tuần tự giới hạn luồng đồng thời.
+     - [src/main/services/videoWorker.ts](src/main/services/videoWorker.ts): Gọi FFmpeg render phụ đề chìm và lách bản quyền.
+
+---
+
+## 3. GIAO THỨC IPC, JSON-RPC 2.0 & WEBSOCKET BRIDGE
+
+### 3.1. Electron IPC Handler An Toàn (`safeIpcHandler`)
+Để tránh hiện tượng rò rỉ bộ nhớ (memory leak) do đăng ký lặp handler IPC trong Electron Main, toàn bộ kênh IPC được quản lý thông qua hàm bọc an toàn:
+
+```typescript
+const safeIpcHandler = <T>(channel: string, handler: IpcHandler<T>): void => {
+  ipcMain.removeHandler(channel);
+  ipcMain.handle(channel, async (event: IpcMainInvokeEvent, ...args: any[]) => {
+    try {
+      return await handler(event, ...args);
+    } catch (err: any) {
+      console.error(`[IPC] Error in channel handler ${channel}:`, err);
+      return { success: false, error: err.message || 'Unknown IPC error' };
+    }
+  });
+};
+```
+
+### 3.2. Automatic Reconnect WebSocket Bridge
+Kết nối giữa Electron Main và Python Core Bridge (`ws://127.0.0.1:8765`) sử dụng thuật toán **Exponential Backoff with Jitter**:
+$$\text{DelayMs} = \min\left(\text{INITIAL\_BACKOFF} \times 1.5^{(\text{attempts}-1)} + \text{random}(0, 300), \text{MAX\_BACKOFF}\right)$$
+
+---
+
+## 4. TẦNG XỬ LÝ PHẦN CỨNG & FFMPEG GPU WORKER
+
+### 4.1. CUDA Hardware Acceleration & CPU Fallback Engine
+[src/main/services/videoWorker.ts](src/main/services/videoWorker.ts) tự động kiểm tra sự tồn tại của driver card đồ họa NVIDIA qua lệnh `nvidia-smi`.
+- **Luồng GPU**: Kích hoạt `-hwaccel cuda` và encoder `h264_nvenc` với preset mã hóa tốc độ cao (`-preset p4 -tune hq`).
+- **Cơ chế Resilient Fallback**: Nếu tiến trình mã hóa GPU thất bại (do vram hết hoặc driver lỗi), worker tự động giải phóng tài nguyên và kích hoạt lại render bằng CPU với encoder `libx264`.
+
+---
+
+## 5. BẢO MẬT, CLEAN CODE & QUY TRÌNH BUILD WINDOWS (.EXE)
+
+1. **Strict Type-Safety**: 100% mã nguồn TypeScript không sử dụng kiểu `any` lỏng lẻo. Mọi payload truyền qua IPC đều có interface định nghĩa rõ ràng.
+2. **Quy trình Build NSIS Installer**:
+   ```powershell
+   npm run electron:build
+   ```
+   Lệnh sẽ tự động đóng gói dự án thông qua `electron-builder` với các file nhị phân đính kèm trong thư mục `release/`.
+
+---
+
+<div align="center">
+  <b>CREATOROS TECHNICAL ARCHITECTURE DOCUMENTATION</b> — <i>Được cập nhật tự động vào ngày 01/09/2026.</i>
+</div>
+
+Hệ thống DRM trong CREATOROS trong [hardware_fingerprint.py](hardware_fingerprint.py) được thiết kế để kích hoạt và xác thực bản quyền vĩnh viễn hoặc theo kỳ **100% Offline**, không phụ thuộc vào máy chủ cấp phép từ xa.
 
 ### 2.1. Thuật toán tạo mã định danh phần cứng (Machine Fingerprint)
 Hệ thống kết hợp 4 tham số phần cứng không thể thay đổi:
@@ -135,7 +163,7 @@ $$\text{LicenseKey} = \text{CR-\{TIER\}-\{HASH\_FP\}-\{EXPIRY\}-\{SIGNATURE\}}$$
 
 ## 3. VISUAL WORKFLOW BUILDER & DAG COMPILER ENGINE
 
-Module `workflow_dag_compiler.py` cùng giao diện `WorkflowBuilderTool.tsx` mang đến khả năng thiết kế kịch bản tự động hóa xử lý video bằng kéo thả node tương tác.
+Module [workflow_dag_compiler.py](workflow_dag_compiler.py) cùng giao diện [src/components/WorkflowBuilderTool.tsx](src/components/WorkflowBuilderTool.tsx) mang đến khả năng thiết kế kịch bản tự động hóa xử lý video bằng kéo thả node tương tác.
 
 ### 3.1. Phân loại Nodes hỗ trợ
 1. **Input & Ingestion**: `INPUT_VIDEO`, `TIKTOK_SCRAPE`, `YOUTUBE_FETCH`.
@@ -171,7 +199,7 @@ Stage 5:           [Phone Farm Multi-Publish]
 
 ## 4. HỆ THỐNG QUẢN LÝ BLUEPRINT & PRESET CỤC BỘ
 
-Lưu trữ và đồng bộ toàn bộ công thức làm video, thông số No-Strike, bộ lọc màu, và quy trình Workflow qua module `BlueprintPresetTool.tsx` và `state_manager.py`.
+Lưu trữ và đồng bộ toàn bộ công thức làm video, thông số No-Strike, bộ lọc màu, và quy trình Workflow qua module [src/components/BlueprintPresetTool.tsx](src/components/BlueprintPresetTool.tsx) và [state_manager.py](state_manager.py).
 
 ### 4.1. Cấu trúc lưu trữ SQLite WAL
 Bảng `user_presets` lưu trữ định dạng có cấu trúc:
@@ -207,8 +235,8 @@ Khi chia sẻ Preset/Workflow ra ngoài, hệ thống xuất thành tệp JSON m
 
 ## 5. CƠ CHẾ CẬP NHẬT TỰ ĐỘNG AN TOÀN OTA
 
-Module `ota_updater.py` và giao diện `OtaUpdateModal.tsx` cung cấp cơ chế cập nhật không làm gián đoạn người dùng:
-1. **Kiểm tra phiên bản (*Manifest Query*)**: Đọc tệp cập nhật `latest.yml` để so sánh với `current_version`.
+Module [ota_updater.py](ota_updater.py) và giao diện [src/components/OtaUpdateModal.tsx](src/components/OtaUpdateModal.tsx) cung cấp cơ chế cập nhật không làm gián đoạn người dùng:
+1. **Kiểm tra phiên bản (*Manifest Query*)**: Đọc tệp cập nhật latest.yml để so sánh với current_version.
 2. **Tải phân đoạn (*Chunked Download*)**: Tải file cài đặt `.exe` theo từng khối 64KB, tính toán chính xác % hoàn thành, tốc độ truyền dẫn MB/s và thời gian ước tính còn lại (ETA).
 3. **Kiểm tra tính toàn vẹn SHA-256**: Sau khi tải xong, tệp tạm được đọc nhị phân và băm SHA-256. Nếu mã băm không khớp với chữ ký số từ server, tệp bị hủy ngay lập tức để chống giả mạo hoặc lỗi hỏng tệp.
 4. **Khởi động lại an toàn (*Hot Restart*)**: Tự động giải phóng SQLite locks và khởi chạy bản cập nhật.
@@ -332,7 +360,7 @@ CREATE TABLE IF NOT EXISTS pipeline_checkpoints (
 
 ## 8. BỘ ĐIỀU PHỐI VRAM & GIÁM SÁT PHẦN CỨNG
 
-Để đảm bảo card đồ họa **GTX 1660 Super (6GB VRAM)** hoạt động bền bỉ, module `hardware_governor.py` thực hiện phân luồng ngưỡng cảnh báo 3 cấp độ:
+Để đảm bảo card đồ họa **GTX 1660 Super (6GB VRAM)** hoạt động bền bỉ, module [hardware_governor.py](hardware_governor.py) thực hiện phân luồng ngưỡng cảnh báo 3 cấp độ:
 
 ```
                   VRAM < 70% (Dưới 4200MB)
@@ -361,7 +389,7 @@ CREATE TABLE IF NOT EXISTS pipeline_checkpoints (
 
 ## 9. AI QUALITY CONTROL (QC) AGENT & RAG SCRIPT INTELLIGENCE
 
-Module `qc_agent.py` và `local_rag_engine.py` bảo đảm chất lượng nội dung trước khi render:
+Module [qc_agent.py](qc_agent.py) và [local_rag_engine.py](local_rag_engine.py) bảo đảm chất lượng nội dung trước khi render:
 - **Công thức chấm điểm QC Score:**
 $$\text{QC\_Score} = (\text{Narrative\_Score} \times 0.35) + (\text{FairUse\_Score} \times 0.40) + (\text{AudioSync\_Score} \times 0.25)$$
 - **Local RAG Vector Engine**: Truy xuất các mẫu Hook mở đầu, cấu trúc kịch bản triệu view từ cơ sở dữ liệu vector cục bộ bằng thuật toán TF-IDF / Cosine Similarity mà không cần gửi dữ liệu ra ngoài Internet.
@@ -390,7 +418,7 @@ ffmpeg -y -hwaccel cuda -hwaccel_output_format cuda \
 
 ## 11. CẤU HÌNH DEVOPS & ĐÓNG GÓI PHÂN PHỐI
 
-Quy trình đóng gói phần mềm Windows hoàn chỉnh tự động thông qua kịch bản `build-windows.bat`:
+Quy trình đóng gói phần mềm Windows hoàn chỉnh tự động thông qua kịch bản [build-windows.bat](build-windows.bat):
 
 1. **Giai đoạn 1 (PyInstaller)**: Biên dịch toàn bộ mã nguồn Python Core thành `dist_py/creatoros_core.exe`.
 2. **Giai đoạn 2 (Vite & ESBuild)**: Đóng gói giao diện React thành các tệp tĩnh trong `dist/` và máy chủ Node.js thành `dist/server.cjs`.
@@ -402,7 +430,7 @@ Quy trình đóng gói phần mềm Windows hoàn chỉnh tự động thông qu
 
 ## 12. CƠ CHẾ TỰ PHỤC HỒI LỖI & DANH MỤC MÃ LỖI
 
-Module `agentic_self_healing.py` tự động xử lý các tình huống ngoại lệ phần cứng:
+Module [agentic_self_healing.py](agentic_self_healing.py) tự động xử lý các tình huống ngoại lệ phần cứng:
 
 | Mã Lỗi | Nguyên Nhân Gốc | Hành Động Tự Phục Hồi (Self-Healing) |
 | :--- | :--- | :--- |
@@ -417,11 +445,11 @@ Module `agentic_self_healing.py` tự động xử lý các tình huống ngoạ
 
 ## 13. MODULE CLI TẢI XUỐNG HÀNG LOẠT & TERMINAL RICH ENGINE
 
-Module độc lập `run_downloader.py` cung cấp giải pháp xử lý dòng lệnh (CLI) tải hàng loạt video từ TikTok, Douyin, YouTube, Facebook Reels và Instagram:
+Module độc lập [run_downloader.py](run_downloader.py) cung cấp giải pháp xử lý dòng lệnh (CLI) tải hàng loạt video từ TikTok, Douyin, YouTube, Facebook Reels và Instagram:
 
 - **Kiến Trúc Đa Luồng**: Sử dụng `ThreadPoolExecutor` quản lý hàng đợi song song với mức tùy chỉnh `--workers`.
 - **Giao Diện Terminal Trực Quan**: Tích hợp `rich` hiển thị thanh tiến độ phần trăm, tốc độ tải (MB/s), thời gian ước tính (ETA) và bảng báo cáo tổng kết.
-- **SQLite Checkpoint**: Ghi nhận trực tiếp dữ liệu vào bảng `pipelines` và `pipeline_stages` trong cơ sở dữ liệu `creatoros_state.db`.
+- **SQLite Checkpoint**: Ghi nhận trực tiếp dữ liệu vào bảng `pipelines` và `pipeline_stages` trong cơ sở dữ liệu creatoros_state.db.
 - **Dừng Khẩn Cấp An Toàn (Graceful Shutdown)**: Bắt sự kiện `SIGINT` (`Ctrl + C`) để hủy luồng và dọn sạch các tệp tạm `.part`, `.ytdl` trước khi thoát.
 
 Cú pháp thực thi:

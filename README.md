@@ -33,7 +33,7 @@
 
 ## 🌟 Tổng Quan Dự Án & Bản Phát Hành v5.0
 
-**CREATOROS Desktop Studio v5.0** là nền tảng Desktop Workstation chuyên nghiệp tích hợp trí tuệ nhân tạo (AI) toàn diện, kết hợp giữa giao diện người dùng thời gian thực bằng **React 18 + Vite + Tailwind CSS + Electron** với lõi backend phân tán **Node.js Express (Cổng 3000)** và máy chủ **Python JSON-RPC 2.0 WebSocket IPC Bridge (Cổng 8765)**.
+**CREATOROS Desktop Studio v5.1** là nền tảng Desktop Workstation chuyên nghiệp tích hợp trí tuệ nhân tạo (AI) toàn diện, kết hợp giữa giao diện người dùng thời gian thực bằng **React 18 + Vite + Tailwind CSS + Electron** với lõi SQLite Database Manager cục bộ và máy chủ **Python JSON-RPC 2.0 WebSocket IPC Bridge (Cổng 8765)**.
 
 Dự án được tối ưu hóa đặc biệt cho phần cứng máy trạm tiêu chuẩn (CPU 6-8 nhân, RAM 16GB, GPU NVIDIA GTX 1660 Super 6GB VRAM hoặc RTX 30/40 series) với tiêu chí **100% Offline-First / Hybrid Cloud**, vận hành trơn tru, không rò rỉ bộ nhớ, chống tràn VRAM (OOM) và tự động phục hồi sự cố thông minh (*Agentic Self-Healing*).
 
@@ -70,13 +70,13 @@ Dự án được tối ưu hóa đặc biệt cho phần cứng máy trạm ti�
 │               TẦNG 1: ELECTRON DESKTOP UI (React 18 + Vite)           │
 │   [Visual Workflow]  [Blueprint Presets]  [Master DAG]  [LipSync ONNX] │
 └───────────────────────────────────┬────────────────────────────────────┘
-                                    │ WebSocket IPC (ws://127.0.0.1:8765)
+                                    │ Native IPC / WebSocket (ws://127.0.0.1:8765)
                                     ▼ (JSON-RPC 2.0 / <2ms Latency)
 ┌────────────────────────────────────────────────────────────────────────┐
-│                   TẦNG 2 & 3: BACKEND & PYTHON IPC BRIDGE              │
-│    • Node.js Express / Socket.IO Server (http://127.0.0.1:3000)        │
+│            TẦNG 2: ELECTRON MAIN PROCESS & TASK DISPATCHER             │
+│    • On-Demand Task Dispatcher & Specialized Handlers Engine          │
+│    • SQLite Database Manager (creatoros_state.db - WAL Mode)          │
 │    • Python JSON-RPC 2.0 WebSocket Bridge (ws://127.0.0.1:8765)        │
-│    • Exponential Backoff Auto-Reconnect & Port Unlocking Engine        │
 └──────┬────────────────────┬────────────────────┬───────────────────────┘
        │                    │                    │
        ▼                    ▼                    ▼
@@ -150,20 +150,17 @@ pip install -r requirements.txt
 ### 3. Khởi Chạy Ứng Dụng Ở Chế Độ Phát Triển (Dev Mode)
 
 ```powershell
-# Khởi chạy đồng thời Node.js Server + Python WS Bridge + Electron UI
+# Khởi chạy giao diện Vite & Electron Native Desktop App
 npm run electron:dev
 ```
 
-Hoặc có thể chạy riêng lẻ từng dịch vụ để gỡ lỗi:
+Hoặc khởi chạy từng thành phần riêng biệt để kiểm thử:
 ```powershell
-# Terminal 1: Node.js Express & Vite Server (Cổng 3000)
-npx tsx server.ts
+# Terminal 1: Python JSON-RPC WebSocket Bridge (Cổng 8765)
+python python_core/py_ws_bridge.py --port 8765
 
-# Terminal 2: Python JSON-RPC WebSocket Bridge (Cổng 8765)
-python py_ws_bridge.py --port 8765
-
-# Terminal 3: Electron Desktop Client
-npx electron .
+# Terminal 2: Electron Desktop Client
+npm run dev
 ```
 
 ---

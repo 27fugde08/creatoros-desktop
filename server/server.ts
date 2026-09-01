@@ -108,7 +108,7 @@ if (redisUrl) {
   console.warn("⚠️ REDIS_URL chưa được cấu hình. Chức năng hàng đợi (Queue) sẽ bị vô hiệu hoá.");
 }
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json({ limit: "50mb" }));
@@ -1188,6 +1188,12 @@ app.post("/api/batch-downloader/parse", async (req, res) => {
 // Global Task Manager for Background Jobs
 const taskStore = new Map<string, any>();
 
+app.get("/api/tasks/status", (req, res) => {
+  const tasks = Array.from(taskStore.values());
+  return res.json({ success: true, tasks });
+});
+
+
 app.get("/api/tasks/:taskId", (req, res) => {
   const { taskId } = req.params;
   const task = taskStore.get(taskId);
@@ -1284,6 +1290,13 @@ app.post("/api/download/scan", async (req, res) => {
       author = "@insta_reels_vn";
       title = `Instagram Reel #${videoId ? videoId.slice(0, 5) : "Post"}`;
       duration = "00:18";
+    } else if (/bilibili\.com/i.test(cleanUrl) || /b23\.tv/i.test(cleanUrl)) {
+      platform = "bilibili";
+      const match = cleanUrl.match(/video\/(BV[a-zA-Z0-9]+)/);
+      if (match) videoId = match[1];
+      author = "@bilibili_anime";
+      title = `Bilibili Clip #${videoId ? videoId.slice(0, 5) : "Clip"}`;
+      duration = "02:40";
     } else if (/kuaishou\.com/i.test(cleanUrl) || /kwai\.com/i.test(cleanUrl)) {
       platform = "kuaishou";
       const match = cleanUrl.match(/photo\/([a-zA-Z0-9_-]+)/);
@@ -1331,8 +1344,9 @@ app.post("/api/download/execute", async (req, res) => {
     fs.mkdirSync(targetOutDir, { recursive: true });
   }
 
+  const scriptPath = path.join(process.cwd(), "bulk_downloader_engine.py");
   const args = [
-    "bulk_downloader_engine.py",
+    scriptPath,
     "--urls_json", JSON.stringify(items),
     "--resolution", resolution,
     "--out_dir", targetOutDir
@@ -1349,6 +1363,9 @@ app.post("/api/download/execute", async (req, res) => {
   if (remove_watermark) {
     args.push("--no_watermark");
   }
+  
+  // Force no_zip flag to download raw mp4s directly
+  args.push("--no_zip");
 
   console.log(`[Express Downloader] Spawning: ${pythonCmd} ${args.join(" ")}`);
   io.emit("downloader_log", `[system] Khởi chạy Bulk Downloader Engine (${items.length} video) -> Lưu trực tiếp tại: ${targetOutDir}`);
@@ -3923,7 +3940,7 @@ async function startServer() {
     });
   });
 
-  server.listen(PORT, "0.0.0.0", () => {
+  server.listen(Number(PORT) || 3000, "0.0.0.0", () => {
     console.log(`Creator Studio AI Server running at http://0.0.0.0:${PORT}`);
   });
 }

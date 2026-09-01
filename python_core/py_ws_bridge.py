@@ -27,6 +27,7 @@ import hashlib
 import base64
 import struct
 import argparse
+import json
 from typing import Dict, List, Set, Any, Optional
 
 # Import Core Sub-Engines
@@ -674,6 +675,19 @@ class EnterpriseJsonRpcWsBridge:
         )
         return response.encode("utf-8")
 
+    def _recv_exact(self, client_sock: socket.socket, n: int) -> Optional[bytes]:
+        """Ensures exactly n bytes are read from the socket without partial reads."""
+        buf = bytearray()
+        while len(buf) < n:
+            try:
+                chunk = client_sock.recv(n - len(buf))
+                if not chunk:
+                    return None
+                buf.extend(chunk)
+            except Exception:
+                return None
+        return bytes(buf)
+
     def _encode_ws_frame(self, message: str) -> bytes:
         payload = message.encode("utf-8")
         payload_len = len(payload)
@@ -693,43 +707,57 @@ class EnterpriseJsonRpcWsBridge:
 
     def _decode_ws_frame(self, client_sock: socket.socket) -> Optional[str]:
         try:
-            head = client_sock.recv(2)
+            head = self._recv_exact(client_sock, 2)
             if not head or len(head) < 2:
+                print(f"[PyWsBridge Debug] Head read failed: got {head}")
                 return None
             byte1, byte2 = head[0], head[1]
             opcode = byte1 & 0x0F
             if opcode == 0x8:  # Close frame
+                print("[PyWsBridge Debug] Received Close Frame (0x8) from client")
                 return None
 
             is_masked = (byte2 & 0x80) != 0
             payload_len = byte2 & 0x7F
 
             if payload_len == 126:
-                ext = client_sock.recv(2)
-                if len(ext) < 2:
+                ext = self._recv_exact(client_sock, 2)
+                if not ext or len(ext) < 2:
+                    print(f"[PyWsBridge Debug] Extended len 126 read failed: got {ext}")
                     return None
                 payload_len = struct.unpack("!H", ext)[0]
             elif payload_len == 127:
-                ext = client_sock.recv(8)
-                if len(ext) < 8:
+                ext = self._recv_exact(client_sock, 8)
+                if not ext or len(ext) < 8:
+                    print(f"[PyWsBridge Debug] Extended len 127 read failed: got {ext}")
                     return None
                 payload_len = struct.unpack("!Q", ext)[0]
 
             mask_key = None
             if is_masked:
-                mask_key = client_sock.recv(4)
-                if len(mask_key) < 4:
+                mask_key = self._recv_exact(client_sock, 4)
+                if not mask_key or len(mask_key) < 4:
+                    print("[PyWsBridge Debug] Mask key read failed")
                     return None
 
-            # Nhận toàn bộ payload
-            data = bytearray()
-            remaining = payload_len
-            while remaining > 0:
-                chunk = client_sock.recv(min(remaining, 65536))
-                if not chunk:
-                    break
-                data.extend(chunk)
-                remaining -= len(chunk)
+            if payload_len > 0:
+                data = self._recv_exact(client_sock, payload_len)
+                if not data or len(data) < payload_len:
+                    print(f"[PyWsBridge Debug] Payload read failed: expected {payload_len}, got {len(data) if data else 0}")
+                    return None
+            else:
+                data = b""
+
+            # Handle Ping/Pong Control Frames (opcode 0x9 = Ping, 0xA = Pong)
+            if opcode == 0x9:
+                pong_frame = bytearray([0x8A, len(data)]) + data
+                try:
+                    client_sock.sendall(pong_frame)
+                except Exception:
+                    pass
+                return ""
+            elif opcode == 0xA:
+                return ""
 
             if is_masked and mask_key:
                 unmasked = bytearray(len(data))
@@ -738,7 +766,11 @@ class EnterpriseJsonRpcWsBridge:
                 return unmasked.decode("utf-8", errors="ignore")
             else:
                 return data.decode("utf-8", errors="ignore")
-        except Exception:
+        except (socket.error, OSError) as os_err:
+            logger.debug(f"[PyWsBridge] Socket connection reset or closed during frame decode: {os_err}")
+            return None
+        except Exception as err:
+            logger.error(f"[PyWsBridge FrameDecode Error]: {err}", exc_info=True)
             return None
 
     def broadcast(self, event_type: str, data: Any):
@@ -752,16 +784,23 @@ class EnterpriseJsonRpcWsBridge:
                 "timestamp": time.time()
             }
         }
-        encoded = self._encode_ws_frame(json.dumps(notification))
+        try:
+            encoded = self._encode_ws_frame(json.dumps(notification))
+        except Exception as enc_err:
+            logger.error(f"[PyWsBridge Broadcast Error] Failed to encode notification '{event_type}': {enc_err}", exc_info=True)
+            return
+
         with self.clients_lock:
             for client in list(self.clients):
                 try:
                     client.sendall(encoded)
                     self.stats["messages_sent"] += 1
-                except Exception:
+                except Exception as send_err:
+                    logger.warn(f"[PyWsBridge Broadcast] Dropping unresponsive client due to send error: {send_err}")
                     self.clients.discard(client)
 
     def _handle_client(self, client_sock: socket.socket, addr):
+        logger.info(f"[PyWsBridge] New client connecting from {addr}")
         try:
             req = client_sock.recv(2048).decode("utf-8", errors="ignore")
             if "Upgrade: websocket" in req or "upgrade: websocket" in req:
@@ -770,6 +809,8 @@ class EnterpriseJsonRpcWsBridge:
                 with self.clients_lock:
                     self.clients.add(client_sock)
                     self.stats["connected_clients"] = len(self.clients)
+
+                logger.info(f"[PyWsBridge] Client {addr} handshake successful")
 
                 # Chào mừng
                 welcome = {
@@ -788,7 +829,10 @@ class EnterpriseJsonRpcWsBridge:
                 while self.is_running:
                     raw_msg = self._decode_ws_frame(client_sock)
                     if raw_msg is None:
+                        logger.info(f"[PyWsBridge] Client {addr} disconnected cleanly or socket closed.")
                         break
+                    if not raw_msg.strip():
+                        continue
                     self.stats["messages_received"] += 1
 
                     try:
@@ -811,6 +855,7 @@ class EnterpriseJsonRpcWsBridge:
                                         }
                                         client_sock.sendall(self._encode_ws_frame(json.dumps(rpc_resp)))
                                 except Exception as m_err:
+                                    logger.error(f"[PyWsBridge] Error executing RPC method '{method}' for {addr}: {m_err}", exc_info=True)
                                     if req_id is not None:
                                         err_resp = {
                                             "jsonrpc": "2.0",
@@ -819,6 +864,7 @@ class EnterpriseJsonRpcWsBridge:
                                         }
                                         client_sock.sendall(self._encode_ws_frame(json.dumps(err_resp)))
                             else:
+                                logger.warning(f"[PyWsBridge] RPC method '{method}' requested by {addr} not found")
                                 if req_id is not None:
                                     err_resp = {
                                         "jsonrpc": "2.0",
@@ -833,10 +879,12 @@ class EnterpriseJsonRpcWsBridge:
                                 client_sock.sendall(self._encode_ws_frame(json.dumps({
                                     "type": "pong", "time": time.time()
                                 })))
-                    except Exception as e:
-                        pass
-        except Exception:
-            pass
+                    except json.JSONDecodeError as j_err:
+                        logger.warning(f"[PyWsBridge] Invalid JSON message received from {addr}: {j_err}")
+                    except Exception as e_msg:
+                        logger.error(f"[PyWsBridge] Exception processing message from {addr}: {e_msg}", exc_info=True)
+        except Exception as e:
+            logger.error(f"[PyWsBridge] Uncaught exception in client handler for {addr}: {e}", exc_info=True)
         finally:
             with self.clients_lock:
                 self.clients.discard(client_sock)
@@ -849,15 +897,16 @@ class EnterpriseJsonRpcWsBridge:
     def start(self):
         """Khởi động WebSocket Server với cơ chế giải phóng / retry port nếu đang bận"""
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        if hasattr(socket, "SO_EXCLUSIVEADDRUSE") and os.name == 'nt':
+        if os.name == 'nt' and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
             try:
-                self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 0)
+                self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
             except Exception:
-                pass
+                self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        else:
+            self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
         bind_success = False
-        max_bind_attempts = 5
+        max_bind_attempts = 3
         for attempt in range(max_bind_attempts):
             try:
                 self.server_socket.bind((self.host, self.port))
@@ -865,13 +914,17 @@ class EnterpriseJsonRpcWsBridge:
                 bind_success = True
                 break
             except Exception as e:
-                logger.warning(
-                    f"Port {self.port} is currently locked/busy (Attempt {attempt+1}/{max_bind_attempts}). Retrying in 1.5s... Error: {e}"
-                )
-                time.sleep(1.5)
+                if attempt < max_bind_attempts - 1:
+                    logger.warning(
+                        f"Port {self.port} is currently locked/busy (Attempt {attempt+1}/{max_bind_attempts}). Retrying in 1s... Error: {e}"
+                    )
+                    time.sleep(1.0)
+                else:
+                    logger.info(f"[PyWsBridge] Port {self.port} is already in use by another instance. Exiting cleanly.")
+                    return
 
         if not bind_success:
-            logger.error(f"❌ Failed to bind WebSocket socket on {self.host}:{self.port} after {max_bind_attempts} attempts.")
+            logger.info(f"[PyWsBridge] Port {self.port} already in use. Clean exit.")
             return
 
         self.is_running = True

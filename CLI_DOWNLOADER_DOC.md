@@ -9,7 +9,7 @@
 3. [Các Tính Năng Cốt Lõi (Core Features)](#3-các-tính-năng-cốt-lõi)
 4. [Hướng Dẫn Cài Đặt & Yêu Cầu Môi Trường (Installation)](#4-hướng-dẫn-cài-đặt--yêu-cầu-môi-trường)
 5. [Cú Pháp & Danh Mục Tham Số CLI (CLI Reference)](#5-cú-pháp--danh-mục-tham-số-cli)
-6. [Các Kịch Bản Sử Dụng Điển Hình (Usage Scenarios)](#6-các-kịch-bản-sử-dụng-điển-hình)
+6. [Các Kịch Bản Sử Dụng Điển Hình (Usage Scenarios)](#6-các-kịch-bản-sử-dung-điển-hình)
 7. [Cơ Chế Đồng Bộ SQLite Checkpoint & State Manager](#7-cơ-chế-đồng-bộ-sqlite-checkpoint--state-manager)
 8. [Cơ Chế Dừng An Toàn & Dọn Dẹp Tệp Tạm (Graceful Shutdown)](#8-cơ-chế-dừng-an-toàn--dọn-dẹp-tệp-tạm)
 9. [Cơ Chế Xử Lý Lỗi & Tự Phục Hồi (Self-Healing & Fallbacks)](#9-cơ-chế-xử-lý-lỗi--tự-phục-hồi)
@@ -18,15 +18,17 @@
 
 ## 1. GIỚI THIỆU TỔNG QUAN
 
-Module **`run_downloader.py`** là công cụ dòng lệnh (CLI - Command Line Interface) độc lập hiệu năng cao, được thiết kế chuyên biệt cho hệ thống **CREATOROS**. Công cụ cho phép người dùng và các tiến trình tự động tải hàng loạt video chất lượng cao từ nhiều nền tảng mạng xã hội khác nhau mà không làm nghẽn tài nguyên hệ thống, hiển thị tiến độ trực quan theo thời gian thực trên cửa sổ Terminal và đồng bộ dữ liệu vào cơ sở dữ liệu SQLite trung tâm.
+Hệ thống tải xuống của CREATOROS bao gồm hai module chính được tối ưu hóa cao:
+- [run_downloader.py](run_downloader.py): Giao diện dòng lệnh (CLI - Command Line Interface) độc lập hiển thị đồ họa trực quan qua terminal.
+- [bulk_downloader_engine.py](bulk_downloader_engine.py): Lõi xử lý ngầm (Background Engine) được gọi trực tiếp bởi Electron Main Process thông qua `downloadHandler.ts` và Task Dispatcher để phục vụ cho giao diện người dùng Desktop React/Electron.
 
-### Các Nền Tảng Hỗ Trợ:
+Các nền tảng được hỗ trợ tự động:
 - **TikTok**: Tự động bóc tách và tải video gốc không dính Watermark (No-Watermark Stream).
 - **Douyin (Tiktok Trung Quốc)**: Tải video độ phân giải cao 1080p+ kèm âm thanh chất lượng cao.
 - **YouTube**: Tự động tải YouTube Shorts, YouTube Video chuẩn MP4/H.264 hoặc bóc tách Audio MP3.
 - **Facebook**: Tải Facebook Reels và Video công khai chất lượng HD.
 - **Instagram**: Tải Reels, Stories và Video bài đăng.
-- **Kuaishou**: Tải video định dạng chuẩn.
+- **Kuaishou**: Tải video định dạng sạch.
 
 ---
 
@@ -34,12 +36,12 @@ Module **`run_downloader.py`** là công cụ dòng lệnh (CLI - Command Line I
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                          GIAO DIỆN TERMINAL / CLI                           │
-│   • Rich Console Live Progress (Speed MB/s, ETA, Percentage, Spinners)      │
-│   • ANSI Color Fallback (Tương thích mọi môi trường Terminal/SSH/Docker)    │
+│                          GIAO DIỆN ELECTRON / TERMINAL / CLI                │
+│   • React App / BatchDownloaderTool.tsx gửi yêu cầu qua IPC 'run-task'       │
+│   • Hoặc chạy trực tiếp qua CLI với Rich Console Live Progress (Speed, ETA)  │
 └──────────────────────────────────────┬──────────────────────────────────────┘
                                        │
-                                       ▼ (Tham số dòng lệnh / Input)
+                                       ▼ (JSON-RPC IPC / Tham số dòng lệnh)
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                      CORE DOWNLOADER CONTROLLER                             │
 │   • URL Normalizer & Platform Detector (Tự động nhận diện nền tảng)         │
@@ -69,12 +71,12 @@ Module **`run_downloader.py`** là công cụ dòng lệnh (CLI - Command Line I
 - Tận dụng `ThreadPoolExecutor` của Python cho phép tải song song từ 2 đến 16 liên kết cùng lúc.
 - Ngăn chặn triệt để tình trạng đơ/nghẽn Terminal I/O.
 
-### 3.3. Cơ Chế Bắt Tín Hiệu & Dọn Dẹp An Toàn (Graceful Shutdown)
+### 3.3. Cơ Chế Bắt Tín Fe & Dọn Dẹp An Toàn (Graceful Shutdown)
 - Lắng nghe tín hiệu `SIGINT` (`Ctrl + C`) hoặc `SIGTERM`.
 - Tự động hủy các luồng đang chờ và **xóa sạch toàn bộ các tệp tạm dở dang** (`.part`, `.ytdl`, `.tmp`) trên ổ cứng trước khi thoát, chống rác ổ đĩa NVMe.
 
 ### 3.4. Tích Hợp Chặt Chẽ Cơ Sở Dữ Liệu Checkpoint
-- Tự động tạo và cập nhật trạng thái Pipeline vào SQLite (`creatoros_state.db`).
+- Tự động tạo và cập nhật trạng thái Pipeline vào SQLite thông qua [state_manager.py](state_manager.py).
 - Đồng bộ dữ liệu sang giao diện Desktop React/Electron mà không cần khởi động lại ứng dụng.
 
 ---
@@ -83,12 +85,12 @@ Module **`run_downloader.py`** là công cụ dòng lệnh (CLI - Command Line I
 
 ### 4.1. Yêu Cầu Phần Cứng & Phần Mềm:
 - **Hệ Điều Hành**: Windows 10/11 x64, macOS, Linux (Ubuntu 20.04+).
-- **Python**: Phiên bản 3.9 trở lên.
+- **Python**: Phiên bản 3.10 đến 3.12.
 - **FFmpeg**: Đã được cài đặt và thêm vào biến môi trường `PATH`.
 
-### 4.2. Cài Đặt Thư Viện Phụ Thuộc (Tùy Chọn):
+### 4.2. Cài Đặt Thư Viện Phụ Thuộc:
 ```bash
-pip install yt-dlp rich
+pip install yt-dlp rich requests
 ```
 *(Hệ thống đã tích hợp sẵn cơ chế Fallback tự động, có thể chạy mượt mà ngay cả khi thiếu thư viện mở rộng).*
 
@@ -96,12 +98,12 @@ pip install yt-dlp rich
 
 ## 5. CÚ PHÁP & DANH MỤC THAM SỐ CLI
 
-### Cú pháp tổng quát:
+### CLI Cú pháp tổng quát:
 ```bash
 python3 run_downloader.py [URL_1] [URL_2] ... [OPTIONS]
 ```
 
-### Bảng Danh Mục Tham Số:
+### Bảng Danh Mục Tham Số của [run_downloader.py](run_downloader.py):
 
 | Tham Số | Tên Rút Gọn | Kiểu Dữ Liệu | Mặc Định | Mô Tả Chức Năng |
 | :--- | :---: | :---: | :---: | :--- |
@@ -155,7 +157,7 @@ python3 run_downloader.py
 
 ## 7. CƠ CHẾ ĐỒNG BỘ SQLITE CHECKPOINT & STATE MANAGER
 
-Khi thực thi, `run_downloader.py` tự động tương tác với cơ sở dữ liệu `creatoros_state.db`:
+Khi thực thi, cả [run_downloader.py](run_downloader.py) và [bulk_downloader_engine.py](bulk_downloader_engine.py) tự động tương tác với cơ sở dữ liệu `creatoros_state.db` qua [state_manager.py](state_manager.py):
 
 1. **Khởi tạo Pipeline**: Tạo bản ghi trong bảng `pipelines` với trạng thái `RUNNING`.
 2. **Theo dõi Stage**: Ghi nhận giai đoạn `1_DOWNLOAD_INGEST` với dữ liệu metadata:
@@ -168,21 +170,21 @@ Khi thực thi, `run_downloader.py` tự động tương tác với cơ sở d�
 
 ## 8. CƠ CHẾ DỪNG AN TOÀN & DỌN DẸP TỆP TẠM
 
-Khi người dùng nhấn `Ctrl + C` trên Terminal:
-1. `ShutdownHandler` chặn tín hiệu `SIGINT` và kích hoạt cờ `is_shutting_down = True`.
+Khi người dùng nhấn hủy tác vụ tải xuống từ giao diện Electron hoặc nhấn `Ctrl + C` trên Terminal:
+1. Cờ dừng khẩn cấp được kích hoạt và tiến trình nhận được tín hiệu dừng.
 2. Toàn bộ các worker đang thực hiện tải sẽ lập tức ngắt kết nối socket mạng.
-3. Bộ dọn dẹp quét qua danh sách các file đang tải và thư mục output:
-   - Xóa các tệp có phần mở rộng `.part`, `.ytdl`, `.temp`, `.tmp`.
-4. Xuất thông báo màu vàng: `[DỌN DẸP] Đã thu hồi tài nguyên và xóa X tệp tạm dở dang an toàn.`
-5. Thoát với exit code `130` chuẩn POSIX.
+3. Bộ dọn dẹp quét qua danh sách các file đang tải và thư mục output, tự động xóa sạch các file rác không phải `.mp4` thông qua hàm `cleanup_non_mp4_files` hoặc xóa các tệp tạm đuôi `.part`, `.ytdl`, `.temp`, `.tmp`.
+4. Xuất thông báo: `[DỌN DẸP] Đã thu hồi tài nguyên và xóa tệp tạm dở dang an toàn.`
 
 ---
 
 ## 9. CƠ CHẾ XỬ LÝ LỖI & TỰ PHỤC HỒI (SELF-HEALING)
 
+Khi gặp lỗi tải, hệ thống tự động chẩn đoán và áp dụng kế hoạch phục hồi theo các cấp độ:
 - **Exponential Backoff Retry**: Tự động thử lại tối đa 3 lần với khoảng cách thời gian tăng dần (`1s, 2s, 3s`) khi gặp sự cố gián đoạn mạng.
-- **Header Spoofing**: Tự động mô phỏng User-Agent chuẩn của Google Chrome 124 và Safari Mobile để vượt qua cơ chế chặn bot của TikTok/Instagram.
-- **High-Res Synthetic Fallback**: Trường hợp URL nguồn bị xóa hoặc máy chủ từ chối kết nối, hệ thống tự động sinh dữ liệu video đồ họa phân giải cao dự phòng chuẩn 1080x1920 (chuẩn định dạng No-Watermark) qua FFmpeg để không làm gãy toàn bộ chuỗi Pipeline tự động hóa phía sau.
+- **User-Agent Rotation & Header Spoofing**: Tự động đổi User-Agent qua Mobile Safari và thêm các Header đặc thù cho Douyin/TikTok để bypass hệ thống phòng thủ chặn bot.
+- **Resolution Downgrade**: Hạ chất lượng tải xuống từ 1080p về 720p hoặc định dạng tốt nhất có sẵn để đảm bảo tệp vẫn được tải.
+- **High-Res Synthetic Fallback**: Trường hợp URL nguồn bị lỗi nặng hoặc không khả dụng ngoại tuyến, hệ thống gọi FFmpeg để tự động tạo một tệp video đồ họa độ phân giải cao 1080x1920 có chèn thông tin tiêu đề và logo nền tảng. Điều này giúp toàn bộ các bước DAG Pipeline phía sau (như lồng tiếng, cắt highlight, chèn phụ đề) không bị gián đoạn hay sập luồng.
 
 ---
 

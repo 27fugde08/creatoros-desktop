@@ -1,12 +1,17 @@
 import { Sequelize, DataTypes } from "sequelize";
 import dotenv from "dotenv";
+import path from "path";
 
 dotenv.config();
 
-// Khởi tạo connection SQLite
+// Khởi tạo connection SQLite động an toàn trong thư mục userData của người dùng
+const dbStorage = process.env.CREATOROS_USER_DATA 
+  ? path.join(process.env.CREATOROS_USER_DATA, 'database.sqlite')
+  : './database.sqlite';
+
 export const sequelize = new Sequelize({
   dialect: 'sqlite',
-  storage: './database.sqlite',
+  storage: dbStorage,
   logging: false,
   pool: {
     max: 100, // Tối đa 100 kết nối đồng thời

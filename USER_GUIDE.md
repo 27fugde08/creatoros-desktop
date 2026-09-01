@@ -1,102 +1,114 @@
-# 📖 SỔ TAY HƯỚNG DẪN VẬN HÀNH & SỬ DỤNG HỆ ĐIỀU HÀNH SÁNG TẠO NỘI DUNG CREATOROS PRO v5.0
-### Hướng Dẫn Chi Tiết Vận Hành, Cấu Hình & Chạy Dự Án Cho Nhà Sáng Tạo & Studio
+# 📖 SỔ TAY HƯỚNG DẪN VẬN HÀNH & SỬ DỤNG - CREATOROS DESKTOP v5.1
+### Hướng Dẫn Chi Tiết Vận Hành, Cấu Hình & Chạy Dự Án Native Windows Desktop App
 
-> **Bản quyền**: CREATOROS PRO v5.0 Next-Gen Enterprise  
-> **Kiến trúc**: Offline-First • GPU Local AI • Master-Worker LAN Rendering • Zero Cloud Dependency  
+> **Bản quyền**: CREATOROS PRO v5.1 Next-Gen Enterprise  
+> **Kiến trúc**: Native Windows Desktop • Node.js/Electron Main Process • API Key Pool • GPU Hardware Acceleration (CUDA)  
 > **Hệ điều hành hỗ trợ**: Windows 10/11 (64-bit), Ubuntu 22.04 LTS, macOS (Apple Silicon M-Series)  
 
 ---
 
 ## 📑 MỤC LỤC
-1. [Hướng Dẫn Cài Đặt & Khởi Chạy Dự Án Toàn Diện](#1-hướng-dẫn-cài-đặt--khởi-chạy-dự-án-toàn-diện)
-2. [Tổng Quan Giao Diện & Tìm Kiếm Nhanh (Ctrl+K / ⌘K)](#2-tổng-quan-giao-diện--tìm-kiếm-nhanh-ctrlk--k)
-3. [Kích Hoạt Bản Quyền Offline (DRM & Hardware Fingerprint)](#3-kích-hoạt-bản-quyền-offline-drm--hardware-fingerprint)
-4. [Hướng Dẫn Chi Tiết 17+ Module Công Cụ Cốt Lõi](#4-hướng-dẫn-chi-tiết-17-module-công-cụ-cốt-lõi)
-   - [4.1. Visual Workflow Builder & Local LLM Copilot (DAG Topological)](#41-visual-workflow-builder--local-llm-copilot-dag-topological)
-   - [4.2. Cụm Render Phân Tán LAN Cluster (Master-Worker Engine)](#42-cụm-render-phân-tán-lan-cluster-master-worker-engine)
-   - [4.3. Local AI Lip-Sync Studio (ONNX / TensorRT / Wav2Lip)](#43-local-ai-lip-sync-studio-onnx--tensorrt--wav2lip)
-   - [4.4. Quản Lý Blueprint & Presets (SQLite WAL .creatoros)](#44-quản-lý-blueprint--presets-sqlite-wal-creatoros)
-   - [4.5. Database Explorer & DAG Scheduler State Inspector](#45-database-explorer--dag-scheduler-state-inspector)
-   - [4.6. Unified Pipeline Orchestrator & State Machine Checkpoints](#46-unified-pipeline-orchestrator--state-machine-checkpoints)
-   - [4.7. AI Highlight & Script (Cắt Video Viral 9:16)](#47-ai-highlight--script-cắt-video-viral-916)
-   - [4.8. AI Review & Recap Phim (Tóm Tắt 3 Hồi Đa Ngôn Ngữ)](#48-ai-review--recap-phim-tóm-tắt-3-hồi-đa-ngôn-ngữ)
-   - [4.9. Dịch Thuật Video 1-Click (Demucs + Whisper SRT + Dubbing)](#49-dịch-thuật-video-1-click-demucs--whisper-srt--dubbing)
-   - [4.10. Edit Bán Content YouTube & Khử Bản Quyền No-Strike](#410-edit-bán-content-youtube--khử-bản-quyền-no-strike)
-   - [4.11. Voice Local Miễn Phí 0đ (TTS & Voice Clone Cục Bộ)](#411-voice-local-miễn-phí-0đ-tts--voice-clone-cục-bộ)
-   - [4.12. Truyện AI Đồng Bộ 100% (Manga / Manhwa Consistent)](#412-truyện-ai-đồng-bộ-100-manga--manhwa-consistent)
-   - [4.13. SEO Suite & Thumbnail Creator (CTR 18%)](#413-seo-suite--thumbnail-creator-ctr-18)
-   - [4.14. Download Hàng Loạt Đa Nền Tảng (No-Watermark)](#414-download-hàng-loạt-đa-nền-tảng-no-watermark)
-   - [4.15. Điều Khiển Phone Farm ADB Nuôi Nick](#415-điều-khiển-phone-farm-adb-nuôi-nick)
-   - [4.16. Facebook Reels Publisher Suite](#416-facebook-reels-publisher-suite)
-   - [4.17. Dashboard Quản Trị & REST API / Webhooks](#417-dashboard-quản-trị--rest-api--webhooks)
+1. [Hướng Dẫn Khởi Động & Cài Đặt Dự Án](#1-hướng-dẫn-khởi-động--cài-đặt-dự-án)
+2. [Hướng Dẫn Chi Tiết Các Tính Năng Cốt Lõi](#2-hướng-dẫn-chi-tiết-các-tính-năng-cốt-lõi)
+   - [2.1. Quản Lý API Key Pool (Gemini Round-Robin & Cooldown)](#21-quản-lý-api-key-pool-gemini-round-robin--cooldown)
+   - [2.2. Quét & Tải Video Hàng Loạt Đa Nền Tảng (No-Watermark)](#22-quét--tải-video-hàng-loạt-đa-nền-tảng-no-watermark)
+   - [2.3. Lồng Tiếng Video AI (AI Dubbing & TTS)](#23-lồng-tiếng-video-ai-ai-dubbing--tts)
+   - [2.4. Khử Bản Quyền Video No-Strike NVENC](#24-khử-bản-quyền-video-no-strike-nvenc)
+3. [Theo Dõi Tiến Trình Realtime & Hàng Đợi Queue Manager](#3-theo-dõi-tiến-trình-realtime--hàng-đợi-queue-manager)
+4. [Tối Ưu Hóa Bộ Nhớ & Tài Nguyên Hệ Thống (Hardware Governor)](#4-tối-ưu-hóa-bộ-nhớ--tài-nguyên-hệ-thống-hardware-governor)
 5. [Cơ Chế Cập Nhật Bảo Mật OTA (SHA-256 Checksum)](#5-cơ-chế-cập-nhật-bảo-mật-ota-sha-256-checksum)
 6. [Xử Lý Sự Cố Thường Gặp (Troubleshooting & FAQs)](#6-xử-lý-sự-cố-thường-gặp-troubleshooting--faqs)
 
 ---
 
-## 1. HƯỚNG DẪN CÀI ĐẶT & KHỞI CHẠY DỰ ÁN TOÀN DIỆN
+## 1. HƯỚNG DẪN KHỞI ĐỘNG & CÀI ĐẶT DỰ ÁN
 
-### 1.1. Yêu Cầu Phần Cứng & Phần Mềm
-- **Hệ Điều Hành:** Windows 10/11 64-bit (hoặc Ubuntu 22.04 LTS).
-- **Node.js:** Phiên bản $\ge 18.0.0$ kèm `npm` / `npx`.
-- **Python:** Phiên bản $3.10 \le \text{Python} \le 3.12$ kèm `pip`.
-- **FFmpeg:** Cần cài đặt bản FFmpeg có hỗ trợ NVIDIA NVENC và thêm vào biến môi trường `PATH`.
-- **Card Đồ Họa (GPU):** NVIDIA GTX 1660 Super (6GB VRAM) hoặc dòng RTX 30/40 Series hỗ trợ CUDA.
+### 1.1. Khởi Chạy Ứng Dụng Đã Đóng Gói (.exe)
+- Mở ứng dụng trực tiếp từ biểu tượng trên màn hình Desktop (hoặc tệp `.exe` trong thư mục `release/`).
+- Phần mềm chạy hoàn toàn **độc lập trên Windows**, mọi dữ liệu cấu hình và video tải về sẽ được lưu tự động vào thư mục hệ thống cục bộ (`AppData`), đảm bảo an toàn và bảo mật cao nhất.
 
-### 1.2. Các Bước Cài Đặt Chi Tiết
+### 1.2. Khởi Chạy Trong Môi Trường Phát Triển (Developer Mode)
 ```powershell
-# Bước 1: Mở PowerShell tại thư mục dự án
-cd D:\creator-studio-ai-suite
-
-# Bước 2: Cài đặt thư viện Node.js
-npm install
-
-# Bước 3: Tạo và kích hoạt môi trường ảo Python .venv
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-
-# Bước 4: Cài đặt các gói Python phụ thuộc
-pip install -r requirements.txt
-```
-
-### 1.3. Lệnh Khởi Chạy Dự Án
-
-#### Cách 1: Khởi chạy toàn bộ hệ thống bằng 1 lệnh duy nhất (Khuyên dùng)
-```powershell
+# Khởi chạy ứng dụng Electron Desktop ở chế độ Dev (kích hoạt đồng thời Vite và Electron UI)
 npm run electron:dev
 ```
-*Lệnh này sẽ kích hoạt đồng thời:*
-1. **Node.js Express Server + Vite Dev Server** tại `http://127.0.0.1:3000`.
-2. **Python WebSocket JSON-RPC 2.0 Bridge** tại `ws://127.0.0.1:8765`.
-3. **Cửa sổ giao diện Electron Desktop App**.
 
-#### Cách 2: Khởi chạy từng thành phần độc lập trong các Terminal riêng
-```powershell
-# Terminal 1: Backend Express Server
-npx tsx server.ts
-
-# Terminal 2: Python WebSocket Bridge
-python py_ws_bridge.py --port 8765
-
-# Terminal 3: Electron Window
-npx electron .
-```
-
-#### Cách 3: Chạy Kiểm Thử Toàn Bộ Hệ Thống (Pytest)
-```powershell
-.\.venv\Scripts\pytest -v
-```
-*(Toàn bộ 26 unit tests kiểm tra ACID SQLite, DRM, DAG, OTA, VRAM Governor, Self-Healing đều phải đạt trạng thái PASSED).*
-
-#### Cách 4: Đóng Gói File Cài Đặt .exe Cho Windows
+### 1.3. Đóng Gói Tệp Cài Đặt Windows (.exe)
 ```powershell
 npm run electron:build
 ```
-*Tệp cài đặt đầu ra sẽ nằm tại thư mục [release/](release/).*
+*Tệp installer NSIS `.exe` và bản Portable đầu ra sẽ được tạo tự động tại thư mục `release/`.*
 
 ---
 
-## 2. TỔNG QUAN GIAO DIỆN & TÌM KIẾM NHANH (CTRL+K / ⌘K)
+## 2. HƯỚNG DẪN CHI TIẾT CÁC TÍNH NĂNG CỐT LỎI
+
+### 2.1. Quản Lý API Key Pool (Gemini Round-Robin & Cooldown)
+- **Mục đích**: Tự động xoay vòng danh sách Gemini API Key và đưa key vào chế độ chờ (cooldown 60 giây) nếu chạm ngưỡng giới hạn quota (`429`), tránh gián đoạn tiến trình dịch thuật & lồng tiếng.
+- **Cách sử dụng**:
+  1. Truy cập mục **Cấu Hình API Key** trên giao diện.
+  2. Dán danh sách các Gemini API Key của bạn (mỗi line 1 key).
+  3. Nhấn **Lưu API Key Pool**. Hệ thống sẽ mã hóa và lưu trữ an toàn tại `AppData/apiKeys.json`.
+
+### 2.2. Quét & Tải Video Hàng Loạt Đa Nền Tảng (No-Watermark)
+- **Mục đích**: Quét dữ liệu và tải video hàng loạt từ Douyin, TikTok, YouTube Shorts không dính logo watermark.
+- **Cách sử dụng**:
+  1. Chuyển đến tab **Batch Downloader**.
+  2. Dán danh sách URL video cần quét (mỗi dòng một liên kết).
+  3. Cấu hình Cookie hoặc Proxy HTTP/SOCKS5 (nếu quét từ vùng địa lý hạn chế).
+  4. Nhấn **Chọn thư mục lưu** để chỉ định nơi chứa video `.mp4`.
+  5. Nhấn **Bắt đầu tải xuống**.
+
+### 2.3. Lồng Tiếng Video AI (AI Dubbing & TTS)
+- **Mục đích**: Tự động dịch thuật văn bản kịch bản video bằng Gemini AI và tổng hợp giọng đọc lồng tiếng đa ngôn ngữ chuẩn cảm xúc.
+- **Cách sử dụng**:
+  1. Chọn các video trong hàng đợi hoặc nạp tệp video/văn bản từ máy tính.
+  2. Chọn Gemini AI Model và nhập Custom Prompt định hình văn phong dịch (ví dụ: *"Dịch phong cách hài hước, tự nhiên"*).
+  3. Chọn Ngôn ngữ đích (Tiếng Việt, Tiếng Anh, Tiếng Nhật, v.v.) và Giọng đọc TTS (Neural Voice).
+  4. Tùy chỉnh âm lượng audio (100% - 200%) và xem trước vị trí phụ đề.
+  5. Nhấn **"Bắt đầu xử lý nha"** để hệ thống chạy ngầm qua FFmpeg Worker & NVENC GPU.
+
+### 2.4. Khử Bản Quyền Video No-Strike NVENC
+- **Mục đích**: Biến đổi các thông số kỹ thuật của video gốc để vượt qua các thuật toán quét bản quyền tự động trên YouTube Reels/Shorts/TikTok.
+- **Cách sử dụng**:
+  1. Chọn video gốc từ danh sách.
+  2. Tích chọn các phương pháp lách: *Lật gương hình ảnh*, *Tăng tốc độ 1.03x*, *Thay đổi mã hash MD5*, *Tạo viền Blur Padding*, *Chèn micro-noise*.
+  3. Nhấn **Xử lý No-Strike**: Render video siêu tốc bằng GPU NVIDIA CUDA.
+
+---
+
+## 3. THEO DÕI TIẾN TRÌNH REALTIME & HÀNG ĐỢI QUEUE MANAGER
+- Mọi tác vụ tải xuống, render video, xử lý audio đều được đưa vào **Queue Manager** xử lý tuần tự theo số luồng cấu hình.
+- Người dùng có thể theo dõi trạng thái tiến trình thời gian thực (`queued`, `processing`, `completed`, `failed`), % thanh tiến độ và log hoạt động chi tiết tại bảng **Hàng Đợi & Lịch Sử** ở đáy màn hình.
+
+---
+
+## 4. TỐI ƯU HÓA BỘ NHỚ & TÀI NGUYÊN HỆ THỐNG (HARDWARE GOVERNOR)
+- **VRAM Cleanup**: Tự động kích hoạt giải phóng bộ nhớ GPU (`torch.cuda.empty_cache`) sau mỗi batch render để tránh hiện tượng tràn VRAM (Out of Memory).
+- **NVMe Cache Cleaner**: Tự động dọn dẹp các tệp video/audio tạm trong thư mục `temp/` khi tiến trình hoàn tất hoặc người dùng nhấn **Dọn dẹp bộ nhớ đệm**.
+
+---
+
+## 5. CƠ CHẾ CẬP NHẬT BẢO MẬT OTA (SHA-256 CHECKSUM)
+- Hệ thống hỗ trợ kiểm tra và tải về bản nâng cấp OTA trực tiếp.
+- Mọi bản cập nhật đều được kiểm tra mã băm mật mã học **SHA-256 Checksum** để đảm bảo tính toàn vẹn trước khi đè lên file ứng dụng hiện tại.
+
+---
+
+## 6. XỬ LÝ SỰ CỐ THƯỜNG GẶP (TROUBLESHOOTING & FAQS)
+
+| Hiện Tượng | Nguyên Nhân | Cách Khắc Phục |
+| :--- | :--- | :--- |
+| Lỗi API 429 Quá Tải | Key Gemini hiện tại bị giới hạn lượt gọi | Bổ sung thêm API Key vào **Gemini Key Pool** để tự động xoay vòng cooldown. |
+| FFmpeg Không Tăng Tốc GPU | Chưa cài Driver NVIDIA hoặc thiếu phần cứng CUDA | Kiểm tra driver card màn hình qua lệnh `nvidia-smi` hoặc chuyển sang render CPU. |
+| Không Tải Được Link TikTok | Cookie hết hạn hoặc địa chỉ IP bị block | Cập nhật Cookie mới trong phần cài đặt hoặc thêm Proxy HTTP/SOCKS5. |
+| Tiến Trình Bị Treo Ở 0% | Server WebSocket chưa khởi tạo thành công | Thử khởi động lại ứng dụng hoặc kiểm tra cổng `8765`. |
+
+---
+
+<div align="center">
+  <b>CREATOROS DESKTOP USER GUIDE</b> — <i>Được cập nhật tự động vào ngày 01/09/2026.</i>
+</div>
 
 - Nhấn tổ hợp phím **`Ctrl + K`** (trên Windows) hoặc **`Cmd + K`** (trên macOS) để mở **Global Search Palette**.
 - Gõ từ khóa tìm kiếm (*workflow*, *lipsync*, *lan cluster*, *voice*, *preset*, *db explorer*, *license*).
@@ -116,7 +128,7 @@ CREATOROS áp dụng cơ chế xác thực bản quyền phần cứng không c�
    - **MAC Address**: Địa chỉ vật lý của card mạng chính.
    - **GPU**: NVIDIA Device ID & VRAM Bus Width.
 3. Nhập **License Key** được cấp theo định dạng `CR-PRO_V48-XXXX-LIFETIME-YYYY`.
-4. Nhấn **Xác Thực & Kích Hoạt Offline**. License sẽ được mã hóa và lưu trữ an toàn trong cơ sở dữ liệu SQLite WAL cục bộ (`creatoros_state.db`).
+4. Nhấn **Xác Thực & Kích Hoạt Offline**. License sẽ được mã hóa và lưu trữ an toàn trong cơ sở dữ liệu SQLite WAL cục bộ creatoros_state.db.
 
 ---
 
@@ -171,7 +183,7 @@ CREATOROS áp dụng cơ chế xác thực bản quyền phần cứng không c�
 ---
 
 ### 4.5. Database Explorer & DAG Scheduler State Inspector
-- **Mục đích**: Tra cứu, quản lý trạng thái cơ sở dữ liệu SQLite (`creatoros_state.db` và `database.sqlite`), kiểm tra checkpoint và chạy lệnh SQL tùy biến.
+- **Mục đích**: Tra cứu, quản lý trạng thái cơ sở dữ liệu SQLite creatoros_state.db và database.sqlite, kiểm tra checkpoint và chạy lệnh SQL tùy biến.
 - **Cách sử dụng**:
   1. Vào tab **Database Explorer**.
   2. Chọn cơ sở dữ liệu và bảng cần kiểm tra (`pipelines`, `pipeline_stages`, `user_presets`, `healing_incidents`, `rag_documents`).

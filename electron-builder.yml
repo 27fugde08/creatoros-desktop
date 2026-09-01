@@ -8,6 +8,10 @@ directories:
 
 files:
   - dist/**/*
+  - electron/**/*
+  - ipcHandlers.js
+  - configManager.js
+  - services/**/*
   - electron.cjs
   - preload.cjs
   - package.json
@@ -55,6 +59,8 @@ nsis:
 
 portable:
   artifactName: CreatorOS-Portable-${version}.exe
+
+npmRebuild: false
 
 asar: true
 asarUnpack:
